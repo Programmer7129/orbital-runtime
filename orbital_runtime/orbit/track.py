@@ -66,9 +66,21 @@ class OrbitTrack:
         return self.saa_duration_s / self.period_s
 
     def in_saa(self, t: float) -> bool:
-        """True if simulation time t lies inside the SAA transit window."""
-        p = self.phase(t)
-        return self.saa_start_phase <= p < self.saa_start_phase + self.saa_fraction
+        """True if simulation time t lies inside the SAA transit window.
+
+        Expressed via `saa_entry_time` so that this predicate and
+        `saa_windows` share one definition of the window edges -- the flux
+        model uses `saa_windows` to build segments and this to label events,
+        and the two must never disagree.
+
+        Boundary caveat: `saa_start_phase * period_s` is not exactly
+        representable in binary floating point, so a query landing *exactly*
+        on an edge many orbits out may fall on either side by ~1e-12 s. That
+        is physically meaningless (the SAA has no nanosecond-sharp edge) and
+        cannot affect sampling, which places events strictly inside segments.
+        """
+        start = self.saa_entry_time(self.orbit_index(t))
+        return start <= t < start + self.saa_duration_s
 
     def saa_entry_time(self, orbit: int) -> float:
         """Absolute time of SAA entry for a given orbit index."""
