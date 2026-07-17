@@ -97,6 +97,12 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--n-embd", type=int, default=128)
     w.add_argument("--lr", type=float, default=1e-3)
     w.add_argument("--eval-every", type=int, default=0)
+    w.add_argument(
+        "--log-every",
+        type=int,
+        default=TrainConfig.log_every,
+        help="emit a step event every N steps (1 = every step, for the dashboard)",
+    )
     return p
 
 
@@ -193,7 +199,9 @@ def main(argv: list[str] | None = None) -> int:
 
     _print_header(args, workload, device, flux, env)
 
-    cfg = TrainConfig(steps=args.steps, eval_every=args.eval_every)
+    cfg = TrainConfig(
+        steps=args.steps, eval_every=args.eval_every, log_every=args.log_every
+    )
     result = train(
         workload, cfg=cfg, env=env, telemetry=telemetry, detector=detector, recovery=recovery
     )

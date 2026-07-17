@@ -16,6 +16,17 @@ Event schema (common fields on every record):
 plus event-specific fields. Wall-clock readings are the ONLY nondeterministic
 content; they are excluded from determinism comparisons (see
 `read_events(strip_wall=True)` and `WALL_CLOCK_FIELDS`).
+
+Non-finite floats are written as the JSON STRINGS "NaN"/"Infinity"/
+"-Infinity" (see `_encode_float`), because `json.dumps` would otherwise emit
+them as bare `NaN`/`Infinity` literals, which are not JSON -- Python's
+`json.loads` accepts them, but `JSON.parse` does not, and the dashboard is
+JavaScript. This is not hypothetical: a dead run's `run_end` carries
+`final_loss: NaN` and `final_val_loss: Infinity`, so the one record that
+explains the death is exactly the record a browser could not read.
+
+`read_events` reverses the encoding, so Python-side consumers see the same
+floats they always did; only the bytes on disk changed.
 """
 
 from __future__ import annotations
@@ -46,6 +57,16 @@ EVENT_ROLLBACK = "rollback"
 # Keep this list complete: a timing field that is missing here would make
 # `strip_wall=True` silently fail to prove determinism.
 WALL_CLOCK_FIELDS = frozenset({"wall", "wall_s"})
+
+# How non-finite floats cross the JSON boundary. `json.dumps` spells these
+# as bare `NaN`/`Infinity`/`-Infinity`, which no conformant parser accepts;
+# these strings are the same tokens quoted, so the intent survives a
+# round-trip through any JSON reader in any language.
+NONFINITE_ENCODINGS: dict[str, float] = {
+    "NaN": float("nan"),
+    "Infinity": float("inf"),
+    "-Infinity": float("-inf"),
+}
 
 
 @dataclass
@@ -84,7 +105,16 @@ class Telemetry:
         rec.update(fields)
         self._seq += 1
         self.counts[kind] = self.counts.get(kind, 0) + 1
-        self._fh.write(json.dumps(rec, default=_jsonable) + "\n")
+        # allow_nan=False turns "we wrote a non-JSON token" from a silent
+        # corruption of the log into a loud failure at the write. If a float
+        # ever reaches dumps unencoded, this raises instead of producing a
+        # file the dashboard cannot parse.
+        self._fh.write(
+            json.dumps(_encode(rec), default=_jsonable, allow_nan=False) + "\n"
+        )
+        # The returned record keeps its real floats; callers (and tests) that
+        # inspect an emitted record should see what happened, not the wire
+        # spelling of it.
         return rec
 
     def count(self, kind: str) -> int:
@@ -101,11 +131,65 @@ class Telemetry:
         self.close()
 
 
+def _encode_float(x: float) -> float | str:
+    """A JSON-safe spelling of a float. Finite values pass through."""
+    if x != x:
+        return "NaN"
+    if x == float("inf"):
+        return "Infinity"
+    if x == float("-inf"):
+        return "-Infinity"
+    return x
+
+
+def _encode(o: Any) -> Any:
+    """Recursively replace non-finite floats with their string encodings.
+
+    `json.dumps(default=...)` cannot do this: `default` is only consulted for
+    types json does not know, and it knows float perfectly well -- it just
+    spells the non-finite ones wrong.
+    """
+    if isinstance(o, float):
+        return _encode_float(o)
+    if isinstance(o, dict):
+        return {k: _encode(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_encode(v) for v in o]
+    return o
+
+
+def _decode(o: Any) -> Any:
+    """Reverse `_encode`.
+
+    Caveat: a string whose genuine value is "NaN"/"Infinity"/"-Infinity"
+    would be revived as a float. No string field in the schema can take those
+    values (`kind`, `death_reason`, `target_kind`, `dtype`, `device`,
+    `trigger` and friends are all drawn from fixed vocabularies; `name` is a
+    parameter name), and `test_a_string_field_that_looks_like_a_float_is_the_
+    known_limit` pins the boundary so it is a documented limit rather than a
+    lurking surprise.
+    """
+    if isinstance(o, str):
+        if o in NONFINITE_ENCODINGS:
+            return NONFINITE_ENCODINGS[o]
+        return o
+    if isinstance(o, dict):
+        return {k: _decode(v) for k, v in o.items()}
+    if isinstance(o, list):
+        return [_decode(v) for v in o]
+    return o
+
+
 def _jsonable(o: Any) -> Any:
-    """Last-resort encoder: numpy scalars, tensors, Paths."""
+    """Last-resort encoder: numpy scalars, tensors, Paths.
+
+    Runs *after* `_encode`, so a non-finite hiding inside a tensor or numpy
+    scalar (which `_encode` cannot see through) is encoded here instead of
+    reaching `dumps` and tripping `allow_nan=False`.
+    """
     if hasattr(o, "item"):  # numpy scalar / 0-dim tensor
         try:
-            return o.item()
+            return _encode(o.item())
         except Exception:  # pragma: no cover - defensive
             pass
     if isinstance(o, Path):
@@ -121,6 +205,9 @@ def read_events(
     `strip_wall=True` drops every wall-clock field, leaving only the
     deterministic content -- two runs with the same seed must produce
     identical event streams under this projection.
+
+    Non-finite floats are decoded back from their string encodings, so what
+    comes out is what went in.
     """
     events: list[dict[str, Any]] = []
     with Path(path).open() as fh:
@@ -128,7 +215,7 @@ def read_events(
             line = line.strip()
             if not line:
                 continue
-            rec = json.loads(line)
+            rec = _decode(json.loads(line))
             if strip_wall:
                 for field_name in WALL_CLOCK_FIELDS:
                     rec.pop(field_name, None)

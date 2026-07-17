@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 
 import pytest
 
@@ -91,6 +92,139 @@ def test_numpy_and_tensor_values_are_serialisable(tmp_path):
         t.emit("x", a=np.float32(1.5), b=np.int64(3), c=torch.tensor(2.5))
     rec = read_events(path)[0]
     assert rec["a"] == 1.5 and rec["b"] == 3 and rec["c"] == 2.5
+
+
+# --------------------------------------------------------------------- #
+# JSON conformance: the dashboard is JavaScript, not Python
+# --------------------------------------------------------------------- #
+
+
+def _strict_load(line: str):
+    """Parse a line the way a non-Python reader would.
+
+    `json.loads` accepts bare NaN/Infinity as an extension; `JSON.parse` and
+    the JSON spec do not. `parse_constant` is the hook that fires on exactly
+    those tokens, so this rejects what a browser would reject.
+    """
+
+    def reject(token):
+        raise ValueError(f"not valid JSON: bare {token} literal")
+
+    return json.loads(line, parse_constant=reject)
+
+
+def test_non_finite_floats_are_written_as_valid_json(tmp_path):
+    """A dead run's run_end carries NaN and inf.
+
+    Written as bare literals -- json.dumps's default -- that record is
+    unparseable by JSON.parse, so the dashboard would fail to read the one
+    event that explains the death. Encoded as strings, every reader can.
+    """
+    path = tmp_path / "t.jsonl"
+    with Telemetry(path=path, run_id="r") as t:
+        t.emit(
+            EVENT_RUN_END,
+            step=7,
+            died=True,
+            final_loss=float("nan"),
+            final_val_loss=float("inf"),
+            worst=float("-inf"),
+            fine=2.5,
+        )
+
+    raw = _strict_load(path.read_text().strip())
+    assert raw["final_loss"] == "NaN"
+    assert raw["final_val_loss"] == "Infinity"
+    assert raw["worst"] == "-Infinity"
+    assert raw["fine"] == 2.5  # finite floats stay numbers
+
+
+def test_read_events_restores_the_real_floats(tmp_path):
+    """The encoding is a wire format, not a change of meaning."""
+    path = tmp_path / "t.jsonl"
+    with Telemetry(path=path, run_id="r") as t:
+        t.emit("x", loss=float("nan"), val=float("inf"), low=float("-inf"), ok=1.25)
+
+    rec = read_events(path)[0]
+    assert math.isnan(rec["loss"])
+    assert rec["val"] == float("inf")
+    assert rec["low"] == float("-inf")
+    assert rec["ok"] == 1.25
+
+
+def test_non_finite_inside_a_tensor_is_encoded_too(tmp_path):
+    """`_encode` cannot see through a tensor; `_jsonable` must finish the job.
+
+    Without that, a NaN tensor reaches dumps unencoded and allow_nan=False
+    raises -- a regression on a path that used to (wrongly) work.
+    """
+    import numpy as np
+    import torch
+
+    path = tmp_path / "t.jsonl"
+    with Telemetry(path=path, run_id="r") as t:
+        t.emit("x", a=torch.tensor(float("nan")), b=np.float32("inf"))
+
+    raw = _strict_load(path.read_text().strip())
+    assert raw["a"] == "NaN" and raw["b"] == "Infinity"
+    rec = read_events(path)[0]
+    assert math.isnan(rec["a"]) and rec["b"] == float("inf")
+
+
+def test_nested_non_finite_is_encoded(tmp_path):
+    """run_end splats **stats in, so nesting is reachable."""
+    path = tmp_path / "t.jsonl"
+    with Telemetry(path=path, run_id="r") as t:
+        t.emit("x", d={"inner": float("nan")}, lst=[1.0, float("inf")])
+
+    raw = _strict_load(path.read_text().strip())
+    assert raw["d"]["inner"] == "NaN"
+    assert raw["lst"] == [1.0, "Infinity"]
+
+
+def test_emit_returns_the_real_float_not_the_wire_spelling(tmp_path):
+    with Telemetry(path=tmp_path / "t.jsonl", run_id="r") as t:
+        rec = t.emit("x", loss=float("nan"))
+    assert math.isnan(rec["loss"])
+
+
+def test_a_string_field_that_looks_like_a_float_is_the_known_limit(tmp_path):
+    """Documents the one ambiguity the string encoding buys.
+
+    No field in the event schema can legitimately hold these values, so this
+    pins the boundary rather than guarding a live hazard. If a future field
+    could, it needs a different encoding -- not a tweak to this test.
+    """
+    path = tmp_path / "t.jsonl"
+    with Telemetry(path=path, run_id="r") as t:
+        t.emit("x", note="NaN", real="fine")
+
+    rec = read_events(path)[0]
+    assert math.isnan(rec["note"])  # the string came back as a float
+    assert rec["real"] == "fine"
+
+
+def test_a_whole_dead_run_log_is_valid_json(tiny_workload, tmp_path):
+    """End to end: every line of a log from a run that died parses strictly."""
+    path = tmp_path / "run.jsonl"
+    telemetry = Telemetry(path=path, run_id="d")
+
+    w = tiny_workload(seed=5)
+    bits = MemoryInjector(w.model, w.optimizer).static_resident_bits()
+    flux = FluxModel(bits_resident=bits, base_rate_upsets_per_bit_day=5e-4)
+    env = RadiationEnvironment(
+        w.model, w.optimizer, flux=flux, seed=5, n_steps=120, orbits=2.0, telemetry=telemetry
+    )
+    result = train(w, cfg=TrainConfig(steps=120), env=env, telemetry=telemetry)
+    telemetry.close()
+    assert result.died  # the log we care about is the one that died
+
+    lines = path.read_text().strip().split("\n")
+    for i, line in enumerate(lines):
+        try:
+            _strict_load(line)
+        except ValueError as e:
+            raise AssertionError(f"line {i} ({json.loads(line)['kind']}): {e}") from e
 
 
 def test_close_is_idempotent(tmp_path):
