@@ -1,0 +1,26 @@
+==============================================================================
+overhead benchmark | device=cuda steps=200 repeats=5
+  warmup=25 discarded | radiation OFF (measuring the cost of looking)
+==============================================================================
+  repeat 1/5 done
+  repeat 2/5 done
+  repeat 3/5 done
+  repeat 4/5 done
+  repeat 5/5 done
+
+==============================================================================
+configuration                                ms/step   overhead
+------------------------------------------------------------------------------
+baseline (unprotected)                       104.150         --
+A/A control (baseline again)                 104.527     <noise
+tier1: guards                                104.318     <noise
+tier1+2: guards + ABFT (adaptive)            105.834      +1.6%
+tier1+2: guards + ABFT (100% sampling)       109.738      +5.4%
+------------------------------------------------------------------------------
+noise floor (A/A control)                                  0.4%   <- resolution limit
+==============================================================================
+
+PLAN.md target: <10% total with ABFT sampling on.
+  MEETS: +1.6% measured (noise floor 0.4%).
+
+wrote bench_out/overhead_l4.json

@@ -29,17 +29,82 @@ protection, then opens a split-screen mission-control dashboard
 - **dual loss curves** (protected vs unprotected vs clean baseline), and
 - a scrolling **recovery event log** + wall-clock overhead ticker.
 
-The unprotected run's loss looks perfectly healthy — then one bit flip NaNs it at step 141.
-The protected run takes the same 49 upsets, detects 7 that would propagate, rolls back to a
-verified checkpoint each time, replays, and **finishes matching the clean baseline to 0.07%.**
+The unprotected run's loss looks perfectly healthy — then a bit flip NaNs it. The protected run
+takes the same bombardment, detects the strikes that would propagate, rolls back to a verified
+checkpoint each time, replays, and **finishes.** The unprotected run dies; the protected run lives.
 
-The whole thing is deterministic (seed 1337) and runs in **well under a minute on a Mac (MPS/CPU)**.
+The **committed dashboard** (`demo/dashboard/telemetry_data.js`) is the **NVIDIA L4 calibrated-rate
+mission** (seed 3, 300 steps, 1e-7/bit-day — no elevation; unprotected dies at step 179, protected
+completes 300/300; see the real-scale results below). `run_demo.sh` is the **no-GPU reproducer**: on
+a Mac it retrains a laptop-scale version (seed 1337, 0.81M params, compensated 3e-6 rate — unprotected
+dies ~step 141) in **under a minute**, deterministically. Both stories are the same mechanism at two
+scales; the honest disclosure of the laptop rate is in `run_demo.sh` and the honesty flags.
 
 ---
 
 ## Headline results
 
-### The demo run (seed 1337, 0.81M-param nanoGPT, 200 steps, 2 orbits, MPS)
+### Real scale — NVIDIA L4 24GB, at the CALIBRATED flight-band rate (M4b)
+
+Re-measured on a rented **NVIDIA L4 24GB** (ECC on), an **85.3M-param GPT-2-class nanoGPT**
+holding **8.19e9 resident bits** (~100× the laptop demo model). At this scale the **calibrated
+1e-7 upsets/bit-day rate — the top of the flight band, with no elevation at all — kills the
+unprotected run on its own.** The demo no longer needs a compensated rate.
+
+**Calibrated-rate mission (seed 3, 300 steps, 4 orbits, rate 1e-7, NVIDIA L4):**
+
+| Run | Radiation | Outcome | Final val loss |
+|---|---|---|---|
+| clean baseline | none | completed 300/300 | **2.5160** |
+| `--protect off` | 1e-7/bit-day (calibrated) | **DIED (NaN) at step 179** | ∞ |
+| `--protect on` | 1e-7/bit-day (calibrated) | **COMPLETED 300/300** | **2.6275** |
+
+Unprotected: 128 upsets (114 in SAA), then NaN death. Protected: absorbed **326 upsets** (302 in
+SAA — it flies a longer, replayed mission), **10 detected → 10 rolled back** (8 ABFT · 2 guard),
+141 steps replayed, and finished. The committed dashboard (`demo/dashboard/telemetry_data.js`) is
+this exact run.
+
+**Detection-only overhead** (radiation off — the cost of *looking*), **NVIDIA L4, 85.3M params**:
+
+| Config | NVIDIA L4 24GB (85.3M) |
+|---|---|
+| A/A control (noise floor) | 0.4% |
+| tier 1 guards | below noise |
+| tier 1 + 2, **adaptive** sampling | **+1.6% ✓** |
+| tier 1 + 2 @ 100% sampling | +5.4% ✓ |
+
+Better than the MPS figure, exactly as predicted: ABFT is kernel-launch-bound and the cost
+amortizes as GEMMs grow — at real scale even **100% sampling meets the <10% target**.
+
+**Protected-run WALL-CLOCK overhead at calibrated rates** (incl. DCP checkpoint I/O + replay —
+*never measured before M4b*), **NVIDIA L4** (seed 3, 150 steps, 4 orbits, 2 repeats, baseline 53.2 s):
+
+| Rate (upsets/bit-day) | Wall-clock overhead | Rollbacks | Steps replayed | Outcome |
+|---|---|---|---|---|
+| 1e-9 | +27.9% | 1 | 10 | survived |
+| 1e-8 | +64.0% | 3 | 20 | survived |
+| 1e-7 | +139.6% | 9 | 64 | survived |
+
+This is the honest full-cost number the M2 table excludes. It is dominated **not by detection
+(+1.6%) but by full-model checkpoint I/O + replay** — the genuine price of turning the unprotected
+run's death into survival. Checkpoint cadence is a tunable knob; the replay share scales with how
+much real corruption actually landed.
+
+**Detector precision / recall at demo scale** (85.3M params, calibrated 1e-7, 6 seeds), **NVIDIA L4**:
+
+| Tiers | Precision (irradiated) | Recall | Median latency |
+|---|---|---|---|
+| tier 1 guards | 1.00 | 1.00 | 9 steps |
+| tier 1 + 2 (guards + ABFT) | 1.00 | 1.00 | **4 steps** |
+
+Recall holds at 1.00 at real scale, ABFT-driven (first detection is `abft_mismatch` on 6/6);
+6/6 irradiated runs corrupted. ⚠️ **A scale-dependent limitation surfaced** — ABFT false-positives
+on **3/6 *clean* runs** at 768-dim (see honesty flags), so clean-run precision does *not* yet hold
+at real scale without a cancellation-aware tolerance. (The demo seed 3 is unaffected: 0 clean FP.)
+
+Raw JSON for all four: `bench/results/*_l4.json`.
+
+### Laptop demo (no GPU) — seed 1337, 0.81M-param nanoGPT, 200 steps, 2 orbits, MPS/CPU
 
 | Run | Radiation | Outcome | Final val loss |
 |---|---|---|---|
@@ -58,19 +123,24 @@ was never irradiated** (2.4288 vs 2.4304, +0.07%).
 > per-tier overhead below is measured at the true rate. **Headline numbers at real scale are M4b
 > (a rented GPU), not this laptop.**
 
-### Detection — precision / recall vs known injected faults (12 seeds, CPU)
+### Detection — precision / recall vs known injected faults (tiny model, 12 seeds, CPU)
+
+*(Tiny 1-layer/32-dim model; the L4 demo-scale re-measurement is in the real-scale section above.)*
 
 | Tiers | Precision | Recall | Median latency |
 |---|---|---|---|
 | tier 1 (finite/z-score/loss-spike guards) | 1.00 | 0.83 | 24 steps |
 | tier 1 + 2 (guards + ABFT) | **1.00** | **1.00** | **2 steps** |
 
-Zero false positives across 12 clean runs. Ground truth is *exact*, not thresholded:
+Zero false positives across 12 clean runs *at this scale* (at 768-dim, ABFT false-positives on
+clean runs — see honesty flags). Ground truth is *exact*, not thresholded:
 determinism gives a free oracle — the first step where a rate-0 and an irradiated run's losses
 diverge is, by construction, the first fault that **propagated**, so recall is measured only
 against faults that can actually hurt the model (a ReLU-masked upset is never scored as a miss).
 
-### Overhead per tier (measured, with an A/A noise-floor control)
+### Overhead per tier — dev machine MPS/CPU (measured, with an A/A noise-floor control)
+
+*(Dev-machine MPS/CPU; the NVIDIA L4 detection-only overhead is +1.6% adaptive — real-scale section above.)*
 
 | Config | CPU (0.81M) | MPS (0.81M) | MPS (10.7M) |
 |---|---|---|---|
@@ -108,7 +178,7 @@ orbital_runtime/
 │              compute.py, sefi.py, xid.py — activation hooks, hangs/crashes, synthetic Xid stream
 ├── detect/    guards.py — tier 1: isfinite + grad-norm z-score + loss-spike (≈free)
 │              abft.py   — tier 2: sampled checksum verification around nn.Linear GEMMs
-│              watcher.py— tier 3: ECC/Xid consumer (synthetic in sim; DCGM on real NVIDIA)
+│              watcher.py— tier 3: ECC/Xid consumer (synthetic in sim; real nvidia-smi ECC on L4)
 ├── ckpt/      saver.py, policy.py, recover.py — DCP checkpoints; orbit-aware cadence; detect→restore→replay
 ├── run.py     — CLI: orbital-run --workload nanogpt --orbits 2 --rate 3e-6 --protect on|off
 └── telemetry.py — JSONL event log (the single source of truth the dashboard reads)
@@ -116,7 +186,7 @@ demo/
 ├── workloads/nanogpt/  — char-level Shakespeare nanoGPT (CPU/MPS-sized)
 ├── dashboard/          — self-contained HTML/JS dashboard + build.py (JSONL → telemetry_data.js)
 └── run_demo.sh         — the headline demo, end to end
-bench/  overhead.py, detect_eval.py   tests/  (256 tests)
+bench/  overhead.py, detect_eval.py, results/*_l4.json   tests/  (263, green on macOS/MPS + Linux/CUDA)
 ```
 
 **Differentiator — "adaptive vigilance":** detection intensity *and* checkpoint cadence are keyed
@@ -141,7 +211,7 @@ the literature does position-aware protection scheduling.
 
 ```bash
 make venv install     # .venv + editable install + dev deps
-make test              # full suite: 256 tests, ~30 s
+make test              # full suite: 262 pass on macOS/MPS (261 on Linux/CUDA), ~30-40 s
 make demo              # the three runs, raw (no dashboard)
 demo/run_demo.sh       # the three runs + dashboard (NO_OPEN=1 to skip auto-open)
 
@@ -158,18 +228,30 @@ Regenerate the dashboard from existing logs without retraining:
 
 These are tracked in `STATUS.md` and enforced in code; nothing here is quietly shipped.
 
-- **Demo rate (3e-6) is model-size compensation, not physics** — disclosed in the Makefile, the
-  dashboard, and above. The calibrated 1e-9→1e-7 band is what real H100 bit counts imply, asserted
-  in `tests/test_flux.py`.
+- **The laptop demo rate (3e-6) is model-size compensation, not physics** — disclosed in the
+  Makefile, `run_demo.sh`, and above. It exists only because the 0.81M laptop model has too few bits
+  to hit at flight rates. **On the L4 this is retired: the calibrated 1e-7 rate kills the unprotected
+  run with no elevation** (see the real-scale section). The 1e-9→1e-7 band is what real H100 bit
+  counts imply, asserted in `tests/test_flux.py`.
+- **ABFT false-positives at real scale (found M4b, not yet fixed).** On the 85.3M model, ABFT's
+  checksum trips on **3/6 *clean* (unirradiated) runs** (`abft_mismatch`, a *certain* verdict) — it
+  was 0/12 at the 32-dim test scale. Root cause: the mismatch tolerance scales with the
+  post-reduction `|value|`, but the checksum sums over the wide output dimension, so **catastrophic
+  cancellation** makes true fp32 rounding noise exceed the tolerance on some steps. The fix is a
+  running-error / L1 tolerance bound — the "variance-aware threshold" of V-ABFT the module already
+  cites (`detect/abft.py`); **recall is unaffected** (real faults dwarf any tolerance, so the
+  detect_eval recall stays 1.00). Until then, clean-run *precision* is a tiny-scale result. The
+  headline mission (seed 3) is unaffected — 0 clean FP on that seed.
 - **Two uncited constants, both OFF by default** — `DEFAULT_ECC_LEAK_FRACTION` (`flux.py`) and the
   SEFI `p_per_transit` (`sefi.py`) are engineering placeholders, not citations. The headline demo
   runs `ecc_off` with SEFIs off, so no reported number depends on them. They need a real multi-bit-
-  upset fraction / per-transit probability before any `ecc_on` or SEFI number is quoted.
-- **Precision/recall is on a tiny test model** (1 layer, 32-dim) at 5e-4 for suite speed; the
-  mechanism is scale-free, the *numbers* are not.
-- **This is M4a** (no-GPU: dashboard + demo script + README). **M4b** re-measures overhead,
-  precision/recall, and calibrated-rate wall-clock on a rented A100/H100, records the video, and
-  implements real DCGM/Xid polling.
+  upset fraction / per-transit probability before any `ecc_on` or SEFI number is quoted. **(Untouched
+  in M4b — §4 stays open.)**
+- **M4b is done on an NVIDIA L4 24GB** (not A100/H100): real-scale overhead, precision/recall, and
+  calibrated-rate wall-clock are all re-measured above and labelled *NVIDIA L4 24GB*; the MPS/CPU
+  tables below are kept and labelled separately. `DcgmXidSource` (real ECC/Xid polling) is
+  implemented and validated on the L4. **Still open:** the demo video, the two citations above, and
+  the ABFT-at-scale tolerance fix.
 
 ---
 

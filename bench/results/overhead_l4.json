@@ -1,0 +1,52 @@
+{
+  "device": "cuda",
+  "steps": 200,
+  "repeats": 5,
+  "results": [
+    {
+      "name": "baseline (unprotected)",
+      "median_step_ms": 104.14968899999621,
+      "mean_step_ms": 104.23585217999859,
+      "p90_step_ms": 106.27839599999334,
+      "total_s": 23.405869472000063,
+      "overhead_pct": 0.0,
+      "notes": ""
+    },
+    {
+      "name": "A/A control (baseline again)",
+      "median_step_ms": 104.52744400004121,
+      "mean_step_ms": 104.51996708999901,
+      "p90_step_ms": 106.40655600013815,
+      "total_s": 23.47188373500012,
+      "overhead_pct": 0.36270391555851206,
+      "notes": "below the 0.4% noise floor; not resolvable"
+    },
+    {
+      "name": "tier1: guards",
+      "median_step_ms": 104.31788200003211,
+      "mean_step_ms": 104.35923111499505,
+      "p90_step_ms": 106.24424299999191,
+      "total_s": 23.430611071000158,
+      "overhead_pct": 0.16149160083992664,
+      "notes": "below the 0.4% noise floor; not resolvable"
+    },
+    {
+      "name": "tier1+2: guards + ABFT (adaptive)",
+      "median_step_ms": 105.83375500004877,
+      "mean_step_ms": 106.08816820500466,
+      "p90_step_ms": 108.78661099991405,
+      "total_s": 23.93313203599996,
+      "overhead_pct": 1.616966902371273,
+      "notes": ""
+    },
+    {
+      "name": "tier1+2: guards + ABFT (100% sampling)",
+      "median_step_ms": 109.73783750000621,
+      "mean_step_ms": 109.78706659500176,
+      "p90_step_ms": 110.86478899983376,
+      "total_s": 24.675989382000125,
+      "overhead_pct": 5.365497058767209,
+      "notes": ""
+    }
+  ]
+}

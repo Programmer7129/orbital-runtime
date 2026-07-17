@@ -628,7 +628,7 @@
       uState.className = "status pending"; uTxt.textContent = "training…";
     }
     const pState = el("st-prot"), pTxt = el("st-prot-state");
-    if (t >= TMAX) { pTxt.textContent = "✓ COMPLETED 200/200"; }
+    if (t >= TMAX) { pTxt.textContent = "✓ COMPLETED " + STEP_MAX + "/" + STEP_MAX; }
     else { pTxt.textContent = "◉ alive · recovering"; }
     pState.className = "status alive";
   }
@@ -656,8 +656,9 @@
     el("f-bval").textContent = S.baseline_val != null ? S.baseline_val.toFixed(4) : "—";
     el("footer-note").textContent =
       "Overhead " + (S.overhead_pct != null ? "+" + S.overhead_pct + "%" : "n/a") +
-      " is wall-clock incl. replay at 3e-6 (300× the flight band). " +
-      "Calibrated detection-only overhead: +5.4% (see README).";
+      " is wall-clock incl. replay (" + (S.replayed_steps || 0) + " steps replayed, " +
+      (S.rollbacks || 0) + " rollbacks) at " + ((T.meta && T.meta.rate_label) || "the demo rate") +
+      ". Detection-only overhead: " + ((T.meta && T.meta.detection_overhead) || "see README") + ".";
   }
 
   function showBanner() {
@@ -704,7 +705,7 @@
     }
     if (t >= TMAX) {
       pushLog(TMAX, "good", "★",
-        "PROTECTED RUN COMPLETED 200/200 — val " + S.protected_val.toFixed(4) +
+        "PROTECTED RUN COMPLETED " + STEP_MAX + "/" + STEP_MAX + " — val " + S.protected_val.toFixed(4) +
         " (clean " + S.baseline_val.toFixed(4) + ")", "complete");
     }
   }

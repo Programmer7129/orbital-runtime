@@ -1,0 +1,23 @@
+==============================================================================
+detector evaluation | device=cuda seeds=6 rate=1e-07
+  ground truth: exact divergence from a seed-matched clean run
+==============================================================================
+  guards done
+  guards+abft done
+  guards+abft+watcher done
+
+  measuring false positives on CLEAN runs (rate=0)...
+
+==============================================================================
+tiers                        prec  recall  TP  FP  FN  lat(med)
+------------------------------------------------------------------------------
+guards                       1.00    1.00   6   0   0         9
+guards+abft                  1.00    1.00   6   0   0         4
+guards+abft+watcher          1.00    1.00   6   0   0         4
+==============================================================================
+
+false positives on 6 clean (unirradiated) runs: 3/6
+irradiated runs corrupted: 6/6 (died: 6)
+first-detection reason: {'abft_mismatch': 6}
+
+wrote bench_out/detect_eval_l4.json

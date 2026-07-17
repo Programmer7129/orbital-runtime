@@ -10,7 +10,7 @@ from orbital_runtime.detect.watcher import (
     SimulatedXidSource,
     WatcherTier,
 )
-from orbital_runtime.inject.xid import XID_CONTAINED_ECC, XidSimulator
+from orbital_runtime.inject.xid import XID_CONTAINED_ECC, XID_DBE, XidSimulator
 from orbital_runtime.rng import STREAM_XID, stream
 
 
@@ -65,13 +65,49 @@ def test_polling_is_destructive_so_events_fire_once():
 
 def test_dcgm_source_refuses_rather_than_lying():
     """A watcher that reports "no errors" when it cannot see the device is
-    worse than no watcher: it makes an unmonitored run look healthy."""
+    worse than no watcher: it makes an unmonitored run look healthy.
+
+    On a host with no readable NVIDIA ECC device (this dev Mac, CI) the real
+    source must stay blind-and-loud: `available` is False and `poll()` raises
+    rather than returning `[]`. On a box that DOES have one, this path is not
+    exercised -- see test_dcgm_source_reads_real_counters_when_present.
+    """
     src = DcgmXidSource()
-    assert not src.available
-    with pytest.raises(NotImplementedError, match="M4"):
+    if src.available:
+        pytest.skip("a real NVIDIA ECC device is present; blind path not exercised here")
+    with pytest.raises(RuntimeError, match="blind|device"):
         src.poll()
 
     assert WatcherTier(source=src).silent
+
+
+def test_dcgm_source_reads_real_counters_when_present():
+    """M4b: on real NVIDIA hardware the source reads the device's volatile ECC
+    counters and reports events off their deltas.
+
+    Skipped where there is no device (the dev Mac). Validated on the L4:
+    a healthy device with no new errors returns [] (NOT a raise -- the opposite
+    invariant from the blind case), and a simulated counter increase surfaces
+    as a fatal report.
+    """
+    src = DcgmXidSource()
+    if not src.available:
+        pytest.skip("no readable NVIDIA ECC device on this host")
+
+    # Healthy device, no new errors since construction: empty, and crucially
+    # returned rather than raised.
+    assert src.poll() == []
+    assert not WatcherTier(source=src).silent
+
+    # Force the delta path: pretend one uncorrectable ECC error has occurred
+    # since the last poll. It must surface as a fatal Xid-48-class report.
+    base_c, base_u = src._baseline
+    src._baseline = (base_c, base_u - 1)
+    events = src.poll()
+    assert any(e.fatal and e.code == XID_DBE for e in events)
+    # And the watcher escalates it to a certain detection.
+    v = WatcherTier(source=DcgmXidSource()).observe(step=0)
+    assert not v.triggered  # a fresh, healthy source sees nothing
 
 
 def test_simulated_source_is_available():

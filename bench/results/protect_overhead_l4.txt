@@ -1,0 +1,15 @@
+/opt/pytorch/lib/python3.12/site-packages/torch/distributed/checkpoint/state_dict_saver.py:167: UserWarning: torch.distributed is disabled, unavailable or uninitialized, assuming the intent is to save in a single process.
+  warnings.warn(
+/opt/pytorch/lib/python3.12/site-packages/torch/distributed/checkpoint/filesystem.py:111: UserWarning: TypedStorage is deprecated. It will be removed in the future and UntypedStorage will be the only storage class. This should only matter to you if you are using storages directly.  To access UntypedStorage directly, use tensor.untyped_storage() instead of tensor.storage()
+  if tensor.storage().size() != tensor.numel():
+/opt/pytorch/lib/python3.12/site-packages/torch/distributed/checkpoint/state_dict_loader.py:153: UserWarning: torch.distributed is disabled, unavailable or uninitialized, assuming the intent is to load in a single process.
+  warnings.warn(
+/opt/pytorch/lib/python3.12/site-packages/torch/distributed/checkpoint/filesystem.py:592: UserWarning: Detected an existing checkpoint in runs/ovh-ckpt/slot0/.metadata, overwriting since self.overwrite=True. Past version 2.5 of PyTorch, `overwrite` will default to False. Set this variable to True to maintain this functionality or False to raise when an existing checkpoint is found.
+  warnings.warn(
+/opt/pytorch/lib/python3.12/site-packages/torch/distributed/checkpoint/filesystem.py:592: UserWarning: Detected an existing checkpoint in runs/ovh-ckpt/slot1/.metadata, overwriting since self.overwrite=True. Past version 2.5 of PyTorch, `overwrite` will default to False. Set this variable to True to maintain this functionality or False to raise when an existing checkpoint is found.
+  warnings.warn(
+{'rate': 1e-09, 'protected_wall_s': 68.01, 'overhead_pct': 27.9, 'rollbacks': 1, 'replayed_steps': 10, 'checkpoints': 5, 'died': False, 'final_val': 2.559, 'flips': 2, 'flips_in_saa': 1, 'sched_in_mission': 2}
+{'rate': 1e-08, 'protected_wall_s': 87.25, 'overhead_pct': 64.0, 'rollbacks': 3, 'replayed_steps': 20, 'checkpoints': 6, 'died': False, 'final_val': 2.5595, 'flips': 26, 'flips_in_saa': 25, 'sched_in_mission': 21}
+{'rate': 1e-07, 'protected_wall_s': 127.45, 'overhead_pct': 139.6, 'rollbacks': 9, 'replayed_steps': 64, 'checkpoints': 7, 'died': False, 'final_val': 4.038, 'flips': 326, 'flips_in_saa': 302, 'sched_in_mission': 209}
+baseline_wall_s 53.19
+wrote bench_out/protect_overhead_l4.json

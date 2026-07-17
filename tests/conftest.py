@@ -51,10 +51,15 @@ def stepped_workload(tiny_workload):
 
 
 def devices() -> list[str]:
-    """CPU plus MPS when present. Never CUDA on this Mac (PLAN.md rule 1)."""
+    """Every accelerator present: CPU always, plus MPS (dev Mac) or CUDA (M4b
+    cloud GPU). On the Mac this is cpu+mps and CUDA never appears (PLAN.md rule
+    1); on the L4 it is cpu+cuda, so the device-parametrized tests -- recovery,
+    determinism, checkpoint bit-exactness -- actually run on CUDA there."""
     out = ["cpu"]
     if torch.backends.mps.is_available():
         out.append("mps")
+    if torch.cuda.is_available():
+        out.append("cuda")
     return out
 
 

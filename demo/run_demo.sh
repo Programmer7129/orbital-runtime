@@ -18,7 +18,15 @@
 # this demo model holds 7.8e7 resident bits against an H100's 6.4e11 -- four
 # orders of magnitude fewer bits to hit, so the flight-band rate would deliver
 # almost nothing in 200 steps. The band itself is asserted against real H100
-# bit counts in tests/test_flux.py; M4b re-measures at real scale on a GPU.
+# bit counts in tests/test_flux.py.
+#
+# M4b UPDATE: at real scale (85M-param GPT-2-class model, 8.19e9 resident bits)
+# on an NVIDIA L4, the CALIBRATED 1e-7 rate kills the unprotected run with no
+# elevation at all -- see the committed demo/dashboard/telemetry_data.js, which
+# is the L4 calibrated mission (seed 3, 300 steps). This laptop script stays the
+# no-GPU reproducer: re-running it REGENERATES a laptop-scale bundle (seed 1337,
+# 3e-6, 200 steps) in place. To restore the L4 bundle, `git checkout
+# demo/dashboard/telemetry_data.js`.
 
 set -euo pipefail
 
