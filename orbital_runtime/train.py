@@ -130,8 +130,15 @@ def train(
             in_saa = env.in_saa(step) if env else False
 
             # --- radiation lands before the forward pass ---
+            # Ordering is load-bearing: the ABFT checksums snapshotted after
+            # the PREVIOUS step's optimizer.step() predate this radiation, so
+            # a flip landing here is compared against pre-flip truth.
             if env is not None:
                 env.advance_to(step)  # may raise SefiCrash
+
+            # --- M2: tell the tiers where we are, and arm them ---
+            if detector is not None:
+                detector.before_step(t_sim=t_sim, in_saa=in_saa)
 
             # --- M3: checkpoint policy decides before we compute ---
             if recovery is not None:
@@ -150,6 +157,13 @@ def train(
                 torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
             )
             optimizer.step()
+
+            # The weights just changed legitimately, and no radiation has
+            # landed since. This instant -- and only this instant -- is when
+            # ABFT's trusted checksums may be taken. Snapshotting anywhere
+            # later would anchor trust to already-corrupted weights.
+            if detector is not None and detector.abft is not None:
+                detector.abft.refresh_checksums()
 
             loss_val = float(loss.item())
             record = StepRecord(step, loss_val, t_sim, in_saa, grad_norm)

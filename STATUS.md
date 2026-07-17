@@ -157,3 +157,107 @@ no tuning. Which mode you get is decided by IEEE-754, not by a knob.
   Both channels are **off by default**, so no current number depends on them.
 - Xid stream is *correlated with* injected flips, not derived from simulated ECC hardware —
   M2 must report watcher recall as a plumbing measure, not a detector-accuracy result.
+
+---
+
+## 2026-07-16 — M2: see things — COMPLETE
+
+**What passed:** full suite green, **208 tests, ~21 s**. New: `test_guards.py` (18),
+`test_abft.py` (32), `test_watcher.py` (9), `test_detector.py` (15).
+
+### Precision / recall vs known injected faults (12 seeds, rate 5e-4, CPU)
+
+| Tiers | Precision | Recall | Median latency |
+|---|---|---|---|
+| tier 1 (guards) | 1.00 | 0.83 | 24 steps |
+| tier 1+2 (guards+ABFT) | **1.00** | **1.00** | **2 steps** |
+| tier 1+2+3 (+watcher) | 1.00 | 1.00 | 2 steps |
+
+**False positives on 12 clean runs: 0/12.** Irradiated runs corrupted: 12/12 (10 died).
+First detection came from ABFT in 9/12 and from `isfinite` in 3/12.
+
+**ABFT's measured value: recall 0.83 → 1.00, and latency 24 → 2 steps (12× faster).**
+Latency is not cosmetic — it is exactly the number of steps M3 must replay after rollback.
+The watcher contributes nothing in `ecc_off`, which is correct and is the pitch: with ECC
+off the hardware reports nothing, so application-layer detection is all there is.
+
+**Ground truth is exact, not thresholded.** Determinism gives a free oracle: run the same
+seed at rate 0 and irradiated, and the loss curves are bit-identical until the first fault
+*propagates*. So `corruption_step = first step where losses differ` — no tolerance, no
+judgement call, detector never consulted. This also settles M1's masking question: a fault
+ReLU annihilates never moves the curve, so it is never scored as a miss. Recall is measured
+against faults that propagate, which is the only kind that can hurt the model.
+
+### Overhead per tier (measured; PLAN.md design rule 4)
+
+| Config | CPU (0.81M) | MPS (0.81M) | MPS (10.7M) |
+|---|---|---|---|
+| A/A control = **noise floor** | 3.2% | 0.8% | 0.3% |
+| tier 1 guards | below noise | below noise | below noise |
+| tier 1+2 **adaptive** | **+7.2% ✓** | +22.3% ✗ | **+5.4% ✓** |
+| tier 1+2 @100% sampling | +15.0% ✗ | +127.6% ✗ | +36.3% ✗ |
+
+**Target <10% with ABFT sampling on: MET** at realistic scale (+5.4% on 10.7M params/MPS,
++7.2% on CPU). Tier 1 is genuinely free — below the noise floor everywhere, as claimed.
+
+**100% sampling never meets the target (+15% to +128%). This is the quantitative case for
+adaptive vigilance:** position-aware sampling covers the SAA — where ~90% of upsets land —
+completely, at 19% average sampling, and that is the difference between missing the target
+and meeting it.
+
+**The benchmark was wrong before it was right (twice).**
+
+1. **It reported NEGATIVE overhead (−4.3%) for tier 1** — impossible; watching two scalars
+   cannot speed up training. Running all of A then all of B let thermal drift masquerade as
+   signal. Fixed with round-robin interleaving **and an A/A control** — the baseline timed
+   twice under different names, whose apparent overhead *is* the resolution limit. Effects
+   below it are now reported as "below noise", never as a number. Without that control there
+   is no way to distinguish a real 1% from a noisy 0%.
+2. **ABFT was sync-bound, not compute-bound.** `.item()`/`argmax()` per check forced a
+   GPU→CPU stall several times per step: **+203%** at full sampling on MPS. Now every value
+   stays a device tensor and the whole step's checks resolve in **one** sync inside
+   `observe()`. 203% → 128% full, 30% → 22% adaptive.
+
+**Why overhead falls as the model grows (and what it means for M4).** ABFT's remaining cost
+is kernel-launch overhead, not arithmetic: ~6 small kernels per sampled Linear. On a 0.81M
+model each GEMM is microseconds, so the fixed cost dominates; at 10.7M the GEMMs are big
+enough to amortize it (22.3% → 5.4%). The theoretical 1/out saving only materializes at
+scale. **This is evidence M4's real-scale numbers should be better, not worse — but it must
+be measured on the A100, not extrapolated.** (Profiled: `refresh_checksums()` is only 0.4 ms
+of a 12.9 ms step — I had assumed it was the bottleneck and it was not.)
+
+**Design decisions**
+
+- **ABFT trusted-snapshot ordering is the whole tier.** Checksums are captured immediately
+  after `optimizer.step()`, when weights are known-good, and the next forward is compared
+  against that. Deriving `s` from the *live* weights instead — including the natural-looking
+  `weight._version` cache, since an injected flip bumps the version — makes both sides of the
+  identity contain the same bad weight: they agree, and every memory SEU in a Linear passes
+  silently. `test_a_stale_or_live_checksum_would_miss_it` pins this so a refactor can't undo it.
+- **Measured ABFT sensitivity floor: catches bits ≥15 (relative perturbation ≥3e-3), misses
+  bits ≤12 (≤4e-4) — 17 of 32 bit positions.** Not a defect to tune away: below the floor the
+  perturbation is indistinguishable from the GEMM's own rounding noise, and lowering the
+  threshold just buys false positives on clean steps. Asserted in both directions.
+- **Two kinds of signal, tracked separately.** `isfinite`/ABFT/fatal-Xid are proof
+  (`Verdict.certain`); z-score/loss-spike are inference. M3 uses `certain` to decide whether
+  to roll back immediately or escalate — rolling back on every blip would burn the budget.
+- **Detectors are strictly read-only**, asserted on both clean and irradiated runs. If
+  observing changed the trajectory, every number in `bench/` would be measuring a different
+  computation than the one it claims.
+- **`DcgmXidSource` raises rather than returning `[]`.** A watcher that reports "no errors"
+  when it cannot see the device makes an unmonitored run look healthy — worse than no watcher.
+
+**Bugs found**
+
+- `strip_wall`-style NaN trap, again: `nan != nan` made loss-curve equality checks fail on
+  any run that *died*, and would have made `first_divergence` report a bogus corruption at
+  the NaN step. Both are now NaN-aware; equality elsewhere is still exact.
+
+**Blockers / honesty flags**
+
+- ⚠️ The +22.3% MPS small-model figure is real and reported. The target is met *at scale*,
+  not universally. M4 must re-measure on the A100 rather than quote the 5.4%.
+- ⚠️ Precision/recall is measured on the **tiny** test model (1 layer, 32-dim) at 5e-4 for
+  suite speed. The mechanism is scale-free but the *numbers* are not — M4 should re-run
+  `bench/detect_eval.py` at demo scale.
+- Watcher recall in sim measures plumbing, not ECC physics (carried from M1, still true).

@@ -1,0 +1,52 @@
+{
+  "device": "mps",
+  "steps": 40,
+  "repeats": 3,
+  "results": [
+    {
+      "name": "baseline (unprotected)",
+      "median_step_ms": 100.19004193600267,
+      "mean_step_ms": 100.11897187796421,
+      "p90_step_ms": 101.3878749217838,
+      "total_s": 5.017562792170793,
+      "overhead_pct": 0.0,
+      "notes": ""
+    },
+    {
+      "name": "A/A control (baseline again)",
+      "median_step_ms": 99.92012509610504,
+      "mean_step_ms": 100.04477921174839,
+      "p90_step_ms": 101.04629187844694,
+      "total_s": 5.002960250014439,
+      "overhead_pct": -0.2694048576903925,
+      "notes": "below the 0.3% noise floor; not resolvable"
+    },
+    {
+      "name": "tier1: guards",
+      "median_step_ms": 100.15720850788057,
+      "mean_step_ms": 100.08730422123335,
+      "p90_step_ms": 101.62141709588468,
+      "total_s": 5.01002487516962,
+      "overhead_pct": -0.03277114919572134,
+      "notes": "below the 0.3% noise floor; not resolvable"
+    },
+    {
+      "name": "tier1+2: guards + ABFT (adaptive)",
+      "median_step_ms": 105.62800045590848,
+      "mean_step_ms": 105.81042190897278,
+      "p90_step_ms": 109.36987493187189,
+      "total_s": 5.59234904195182,
+      "overhead_pct": 5.427643720699661,
+      "notes": ""
+    },
+    {
+      "name": "tier1+2: guards + ABFT (100% sampling)",
+      "median_step_ms": 136.58191647846252,
+      "mean_step_ms": 137.36164362053387,
+      "p90_step_ms": 143.2583329733461,
+      "total_s": 6.874800208024681,
+      "overhead_pct": 36.32284590289472,
+      "notes": ""
+    }
+  ]
+}

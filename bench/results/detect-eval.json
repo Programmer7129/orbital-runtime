@@ -1,0 +1,568 @@
+{
+  "rate": 0.0005,
+  "seeds": 12,
+  "steps": 120,
+  "device": "cpu",
+  "summaries": [
+    {
+      "label": "guards",
+      "runs": 12,
+      "tp": 10,
+      "fp": 0,
+      "fn": 2,
+      "tn": 0,
+      "precision": 1.0,
+      "recall": 0.8333333333333334,
+      "median_latency_steps": 24.5,
+      "max_latency_steps": 92
+    },
+    {
+      "label": "guards+abft",
+      "runs": 12,
+      "tp": 12,
+      "fp": 0,
+      "fn": 0,
+      "tn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "median_latency_steps": 2.0,
+      "max_latency_steps": 13
+    },
+    {
+      "label": "guards+abft+watcher",
+      "runs": 12,
+      "tp": 12,
+      "fp": 0,
+      "fn": 0,
+      "tn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "median_latency_steps": 2.0,
+      "max_latency_steps": 13
+    }
+  ],
+  "clean_false_positives": 0,
+  "clean_runs": 12,
+  "outcomes": {
+    "guards": [
+      {
+        "seed": 1,
+        "corrupted": true,
+        "corruption_step": 10,
+        "detected": true,
+        "first_detection_step": 26,
+        "latency": 16,
+        "died": true,
+        "flips": 37,
+        "tiers": {
+          "guard": 1
+        },
+        "first_reason": "nonfinite_loss"
+      },
+      {
+        "seed": 2,
+        "corrupted": true,
+        "corruption_step": 18,
+        "detected": true,
+        "first_detection_step": 51,
+        "latency": 33,
+        "died": true,
+        "flips": 42,
+        "tiers": {
+          "guard": 1
+        },
+        "first_reason": "nonfinite_loss"
+      },
+      {
+        "seed": 3,
+        "corrupted": true,
+        "corruption_step": 22,
+        "detected": false,
+        "first_detection_step": null,
+        "latency": null,
+        "died": false,
+        "flips": 98,
+        "tiers": {},
+        "first_reason": ""
+      },
+      {
+        "seed": 4,
+        "corrupted": true,
+        "corruption_step": 11,
+        "detected": true,
+        "first_detection_step": 84,
+        "latency": 73,
+        "died": true,
+        "flips": 74,
+        "tiers": {
+          "guard": 1
+        },
+        "first_reason": "nonfinite_loss"
+      },
+      {
+        "seed": 5,
+        "corrupted": true,
+        "corruption_step": 17,
+        "detected": true,
+        "first_detection_step": 17,
+        "latency": 0,
+        "died": true,
+        "flips": 1,
+        "tiers": {
+          "guard": 1
+        },
+        "first_reason": "nonfinite_loss"
+      },
+      {
+        "seed": 6,
+        "corrupted": true,
+        "corruption_step": 2,
+        "detected": true,
+        "first_detection_step": 2,
+        "latency": 0,
+        "died": true,
+        "flips": 1,
+        "tiers": {
+          "guard": 1
+        },
+        "first_reason": "nonfinite_loss"
+      },
+      {
+        "seed": 7,
+        "corrupted": true,
+        "corruption_step": 10,
+        "detected": true,
+        "first_detection_step": 87,
+        "latency": 77,
+        "died": true,
+        "flips": 95,
+        "tiers": {
+          "guard": 1
+        },
+        "first_reason": "nonfinite_loss"
+      },
+      {
+        "seed": 8,
+        "corrupted": true,
+        "corruption_step": 14,
+        "detected": true,
+        "first_detection_step": 23,
+        "latency": 9,
+        "died": true,
+        "flips": 18,
+        "tiers": {
+          "guard": 1
+        },
+        "first_reason": "nonfinite_loss"
+      },
+      {
+        "seed": 9,
+        "corrupted": true,
+        "corruption_step": 23,
+        "detected": true,
+        "first_detection_step": 87,
+        "latency": 64,
+        "died": true,
+        "flips": 95,
+        "tiers": {
+          "guard": 1
+        },
+        "first_reason": "nonfinite_grad"
+      },
+      {
+        "seed": 10,
+        "corrupted": true,
+        "corruption_step": 17,
+        "detected": false,
+        "first_detection_step": null,
+        "latency": null,
+        "died": false,
+        "flips": 98,
+        "tiers": {},
+        "first_reason": ""
+      },
+      {
+        "seed": 11,
+        "corrupted": true,
+        "corruption_step": 21,
+        "detected": true,
+        "first_detection_step": 113,
+        "latency": 92,
+        "died": true,
+        "flips": 105,
+        "tiers": {
+          "guard": 1
+        },
+        "first_reason": "nonfinite_loss"
+      },
+      {
+        "seed": 12,
+        "corrupted": true,
+        "corruption_step": 23,
+        "detected": true,
+        "first_detection_step": 23,
+        "latency": 0,
+        "died": true,
+        "flips": 11,
+        "tiers": {
+          "guard": 1
+        },
+        "first_reason": "nonfinite_loss"
+      }
+    ],
+    "guards+abft": [
+      {
+        "seed": 1,
+        "corrupted": true,
+        "corruption_step": 10,
+        "detected": true,
+        "first_detection_step": 23,
+        "latency": 13,
+        "died": true,
+        "flips": 37,
+        "tiers": {
+          "abft": 3,
+          "guard": 1
+        },
+        "first_reason": "abft_mismatch"
+      },
+      {
+        "seed": 2,
+        "corrupted": true,
+        "corruption_step": 18,
+        "detected": true,
+        "first_detection_step": 22,
+        "latency": 4,
+        "died": true,
+        "flips": 42,
+        "tiers": {
+          "abft": 3,
+          "guard": 1
+        },
+        "first_reason": "abft_mismatch"
+      },
+      {
+        "seed": 3,
+        "corrupted": true,
+        "corruption_step": 22,
+        "detected": true,
+        "first_detection_step": 22,
+        "latency": 0,
+        "died": false,
+        "flips": 98,
+        "tiers": {
+          "abft": 7
+        },
+        "first_reason": "abft_mismatch"
+      },
+      {
+        "seed": 4,
+        "corrupted": true,
+        "corruption_step": 11,
+        "detected": true,
+        "first_detection_step": 22,
+        "latency": 11,
+        "died": true,
+        "flips": 74,
+        "tiers": {
+          "abft": 8,
+          "guard": 1
+        },
+        "first_reason": "abft_mismatch"
+      },
+      {
+        "seed": 5,
+        "corrupted": true,
+        "corruption_step": 17,
+        "detected": true,
+        "first_detection_step": 17,
+        "latency": 0,
+        "died": true,
+        "flips": 1,
+        "tiers": {
+          "guard": 1
+        },
+        "first_reason": "nonfinite_loss"
+      },
+      {
+        "seed": 6,
+        "corrupted": true,
+        "corruption_step": 2,
+        "detected": true,
+        "first_detection_step": 2,
+        "latency": 0,
+        "died": true,
+        "flips": 1,
+        "tiers": {
+          "guard": 1
+        },
+        "first_reason": "nonfinite_loss"
+      },
+      {
+        "seed": 7,
+        "corrupted": true,
+        "corruption_step": 10,
+        "detected": true,
+        "first_detection_step": 23,
+        "latency": 13,
+        "died": true,
+        "flips": 95,
+        "tiers": {
+          "abft": 5,
+          "guard": 1
+        },
+        "first_reason": "abft_mismatch"
+      },
+      {
+        "seed": 8,
+        "corrupted": true,
+        "corruption_step": 14,
+        "detected": true,
+        "first_detection_step": 22,
+        "latency": 8,
+        "died": true,
+        "flips": 18,
+        "tiers": {
+          "abft": 1,
+          "guard": 1
+        },
+        "first_reason": "abft_mismatch"
+      },
+      {
+        "seed": 9,
+        "corrupted": true,
+        "corruption_step": 23,
+        "detected": true,
+        "first_detection_step": 23,
+        "latency": 0,
+        "died": true,
+        "flips": 95,
+        "tiers": {
+          "abft": 6,
+          "guard": 1
+        },
+        "first_reason": "abft_mismatch"
+      },
+      {
+        "seed": 10,
+        "corrupted": true,
+        "corruption_step": 17,
+        "detected": true,
+        "first_detection_step": 22,
+        "latency": 5,
+        "died": false,
+        "flips": 98,
+        "tiers": {
+          "abft": 8
+        },
+        "first_reason": "abft_mismatch"
+      },
+      {
+        "seed": 11,
+        "corrupted": true,
+        "corruption_step": 21,
+        "detected": true,
+        "first_detection_step": 21,
+        "latency": 0,
+        "died": true,
+        "flips": 105,
+        "tiers": {
+          "abft": 7,
+          "guard": 1
+        },
+        "first_reason": "abft_mismatch"
+      },
+      {
+        "seed": 12,
+        "corrupted": true,
+        "corruption_step": 23,
+        "detected": true,
+        "first_detection_step": 23,
+        "latency": 0,
+        "died": true,
+        "flips": 11,
+        "tiers": {
+          "guard": 1
+        },
+        "first_reason": "nonfinite_loss"
+      }
+    ],
+    "guards+abft+watcher": [
+      {
+        "seed": 1,
+        "corrupted": true,
+        "corruption_step": 10,
+        "detected": true,
+        "first_detection_step": 23,
+        "latency": 13,
+        "died": true,
+        "flips": 37,
+        "tiers": {
+          "abft": 3,
+          "guard": 1
+        },
+        "first_reason": "abft_mismatch"
+      },
+      {
+        "seed": 2,
+        "corrupted": true,
+        "corruption_step": 18,
+        "detected": true,
+        "first_detection_step": 22,
+        "latency": 4,
+        "died": true,
+        "flips": 42,
+        "tiers": {
+          "abft": 3,
+          "guard": 1
+        },
+        "first_reason": "abft_mismatch"
+      },
+      {
+        "seed": 3,
+        "corrupted": true,
+        "corruption_step": 22,
+        "detected": true,
+        "first_detection_step": 22,
+        "latency": 0,
+        "died": false,
+        "flips": 98,
+        "tiers": {
+          "abft": 7
+        },
+        "first_reason": "abft_mismatch"
+      },
+      {
+        "seed": 4,
+        "corrupted": true,
+        "corruption_step": 11,
+        "detected": true,
+        "first_detection_step": 22,
+        "latency": 11,
+        "died": true,
+        "flips": 74,
+        "tiers": {
+          "abft": 8,
+          "guard": 1
+        },
+        "first_reason": "abft_mismatch"
+      },
+      {
+        "seed": 5,
+        "corrupted": true,
+        "corruption_step": 17,
+        "detected": true,
+        "first_detection_step": 17,
+        "latency": 0,
+        "died": true,
+        "flips": 1,
+        "tiers": {
+          "guard": 1
+        },
+        "first_reason": "nonfinite_loss"
+      },
+      {
+        "seed": 6,
+        "corrupted": true,
+        "corruption_step": 2,
+        "detected": true,
+        "first_detection_step": 2,
+        "latency": 0,
+        "died": true,
+        "flips": 1,
+        "tiers": {
+          "guard": 1
+        },
+        "first_reason": "nonfinite_loss"
+      },
+      {
+        "seed": 7,
+        "corrupted": true,
+        "corruption_step": 10,
+        "detected": true,
+        "first_detection_step": 23,
+        "latency": 13,
+        "died": true,
+        "flips": 95,
+        "tiers": {
+          "abft": 5,
+          "guard": 1
+        },
+        "first_reason": "abft_mismatch"
+      },
+      {
+        "seed": 8,
+        "corrupted": true,
+        "corruption_step": 14,
+        "detected": true,
+        "first_detection_step": 22,
+        "latency": 8,
+        "died": true,
+        "flips": 18,
+        "tiers": {
+          "abft": 1,
+          "guard": 1
+        },
+        "first_reason": "abft_mismatch"
+      },
+      {
+        "seed": 9,
+        "corrupted": true,
+        "corruption_step": 23,
+        "detected": true,
+        "first_detection_step": 23,
+        "latency": 0,
+        "died": true,
+        "flips": 95,
+        "tiers": {
+          "abft": 6,
+          "guard": 1
+        },
+        "first_reason": "abft_mismatch"
+      },
+      {
+        "seed": 10,
+        "corrupted": true,
+        "corruption_step": 17,
+        "detected": true,
+        "first_detection_step": 22,
+        "latency": 5,
+        "died": false,
+        "flips": 98,
+        "tiers": {
+          "abft": 8
+        },
+        "first_reason": "abft_mismatch"
+      },
+      {
+        "seed": 11,
+        "corrupted": true,
+        "corruption_step": 21,
+        "detected": true,
+        "first_detection_step": 21,
+        "latency": 0,
+        "died": true,
+        "flips": 105,
+        "tiers": {
+          "abft": 7,
+          "guard": 1
+        },
+        "first_reason": "abft_mismatch"
+      },
+      {
+        "seed": 12,
+        "corrupted": true,
+        "corruption_step": 23,
+        "detected": true,
+        "first_detection_step": 23,
+        "latency": 0,
+        "died": true,
+        "flips": 11,
+        "tiers": {
+          "guard": 1
+        },
+        "first_reason": "nonfinite_loss"
+      }
+    ]
+  }
+}
