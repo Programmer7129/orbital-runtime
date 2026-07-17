@@ -73,3 +73,87 @@ Daily total is invariant to the multiplier (see below) — 6,400/day at every M.
   `ecc_on` mode needs a real MBU fraction first.** The default `ecc_off` mode (what the
   headline demo runs) is fully calibrated and unaffected.
 - No environment blockers. Python 3.13.7, torch 2.13.0, MPS available, CPU/MPS only.
+
+---
+
+## 2026-07-16 — M1: break things — COMPLETE
+
+**What passed:** full suite green, **138 tests, ~17 s**. New: `test_inject_memory.py` (31),
+`test_inject_compute.py` (12), `test_inject_sefi_xid.py` (17), `test_failure_modes.py` (17),
+`test_determinism.py` (11), `test_telemetry.py` (11).
+
+**M1 deliverable met:** `orbital-run --protect off` reliably produces a corrupted run.
+Across 8 seeds at the elevated rate, **8/8 runs are corrupted — 0 escape intact**:
+
+| Outcome | Seeds | Meaning |
+|---|---|---|
+| Died (NaN) | 7/8 | failure mode (a) |
+| Completed but degraded | 1/8 (seed 3) | failure mode (b), val 3.95 vs 2.99 clean (**+0.96**) |
+
+`make demo` (0.81M-param model, 200 steps, 2 orbits, seed 1337): clean run reaches
+val **2.4304**; identical irradiated run at 3e-5 **dies at step 39** after 49 delivered
+upsets (42 in SAA). Deterministic.
+
+**The finding that makes the story work: only fp32 bit 30 is catastrophic.**
+For a typical weight (|v|<1) the biased exponent is ~120 = `01111000`, so exponent bits
+27–29 are *already set* — flipping one **clears** it and drives the value to ~1e-12, which
+is harmless (equivalent to zeroing a weight). Only **bit 30**, the one exponent bit that is
+0, gets **set**, multiplying by 2^128. So ~**1 bit in 32 is lethal, not 4 in 32**. This is
+why runs absorb ~100 upsets and then die from a single one — seeds 5 and 6 each died from
+**exactly one flip**. Verified against `struct` independently of torch.
+
+Consequence: the same uniform-over-bits injector produces both published failure modes with
+no tuning. Which mode you get is decided by IEEE-754, not by a knob.
+
+**Other findings worth carrying forward**
+
+- **`flips_nonfinite` is 0 even in runs that die of NaN — this is correct, not a bug.**
+  Bit 30 turns 0.01 into ~3e36: large but perfectly *finite*. The NaN is manufactured later,
+  when that weight meets a matmul. Counting these as "non-finite flips" would misattribute
+  the mechanism.
+- **ReLU masking is real and reproduced.** A flip leaving a negative pre-activation negative
+  is annihilated by the following ReLU — output bit-identical to clean. This is why an
+  injected upset ≠ an SDC. **M2 consequence: recall must be measured against faults that
+  PROPAGATE, not against faults injected**, or masked-and-harmless faults will be scored as
+  detector misses.
+- **Adam's second moment absorbs strikes.** A huge `exp_avg_sq` shrinks the update to ~0, so
+  optimizer-state hits are often self-neutralizing. Part of why seed 3 survives 98 upsets.
+
+**Three real bugs found by tests (all would have been silent)**
+
+1. **`reshape(-1)` silently copies non-contiguous tensors** — a flip would have landed on a
+   throwaway copy, producing perfect telemetry while the model trained on undamaged weights.
+   The contiguity check ran *after* the reshape, so it never fired. Now checked on the
+   original tensor, and it raises rather than no-oping.
+2. **`static_resident_bits` over-counted 4/3.** AdamW keeps a 0-dim `step` scalar beside
+   `exp_avg`/`exp_avg_sq`; counting state *tensors* instead of *bits* read AdamW as 3
+   states/param and set λ **33% too high**. Now measured exactly when state exists.
+3. **`strip_wall` missed `wall_s`** on `run_end`, which would have made every
+   determinism-of-the-log check vacuous. Wall-clock fields are now enumerated in
+   `WALL_CLOCK_FIELDS`.
+
+**Design decisions**
+
+- **One training loop for both runs.** `--protect off` is the same `train()` with detection
+  and recovery disabled, not a separate path — otherwise measured overhead could be an
+  artifact of the loop rather than of protection.
+- **The whole fault timeline is drawn before step 0** from named streams, so protected and
+  unprotected runs face a bit-identical bombardment (asserted in
+  `test_flip_schedule_is_independent_of_protection`). This is what makes the headline
+  comparison a controlled experiment.
+- **Grad clipping left ON (nanoGPT's default 1.0).** It is a real baseline defense, so the
+  runtime must show value *on top of* standard practice rather than against a strawman.
+- **Batches keyed on `(seed, step)`, not a long-lived generator** — required for M3's
+  exact replay after rollback.
+- `--protect on` currently **exits 2 with an error** rather than silently running unprotected.
+
+**Blockers / honesty flags**
+
+- ⚠️ Elevated rates (3e-5 demo, 5e-4 tests) are **model-size compensation, not physics**: the
+  demo model holds 7.8e7 resident bits vs an H100's 6.4e11. The calibrated 1e-9→1e-7 band is
+  asserted against real H100 bit counts in `test_flux.py`. Documented in the Makefile and the
+  test module. **M4 must produce headline numbers at realistic scale.**
+- ⚠️ `DEFAULT_ECC_LEAK_FRACTION` (M0) and SEFI `p_per_transit` are both uncited assumptions.
+  Both channels are **off by default**, so no current number depends on them.
+- Xid stream is *correlated with* injected flips, not derived from simulated ECC hardware —
+  M2 must report watcher recall as a plumbing measure, not a detector-accuracy result.

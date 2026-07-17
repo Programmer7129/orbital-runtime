@@ -19,7 +19,7 @@ dev = ["pytest>=8.0"]
 orbital-run = "orbital_runtime.run:main"
 
 [tool.setuptools.packages.find]
-include = ["orbital_runtime*"]
+include = ["orbital_runtime*", "demo*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
