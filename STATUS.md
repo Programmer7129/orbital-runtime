@@ -444,3 +444,92 @@ precision/recall and overhead tables, M1's 8/8-corrupted result, and M0's calibr
 2. Rent the GPU, re-measure the four items in §2, then record the video.
 3. Chase the two citations in §4 — or state them as assumptions on the slide. Do not quietly
    ship the placeholder.
+
+---
+
+## 2026-07-17 — M4a: dashboard + demo script + README (the no-GPU items) — COMPLETE
+
+**Scope was M4 PART 1 only** (no GPU, no video, no touching the two uncited constants), per
+the builder brief. M4b (everything needing a rented GPU) is spelled out at the bottom.
+
+**What passed:** full suite green, **262 tests, ~32 s**. New: `test_dashboard_build.py` (6).
+
+**Audit of the WIP checkpoint (`1591a7b`) — kept in full, it was correct.** It added (a) a
+JSON-safe encoding for non-finite floats — a dead run's `run_end` carries `final_loss: NaN`
+and `final_val_loss: Infinity`, which `json.dumps` spells as bare `NaN`/`Infinity` that
+`JSON.parse` rejects, so the one record explaining the death was exactly the record a browser
+could not read; now written as the strings `"NaN"`/`"Infinity"`/`"-Infinity"` and decoded back
+by `read_events`, with `allow_nan=False` turning any unencoded escapee into a loud failure at
+the write — and (b) the `--log-every` CLI flag the handoff called for. Both are load-bearing for
+the dashboard; nothing was reverted.
+
+### 1. Dashboard (`demo/dashboard/`)
+
+- **`build.py`** reduces the three telemetry logs to one bundle and writes `telemetry_data.js`
+  (`window.TELEMETRY = {...}`). The page loads it via `<script src>`, **not** `fetch` — a
+  `file://` page can't fetch a sibling file (unique-origin), so the demo needs **no server, no
+  CDN, nothing but the two files**. Orbit display geometry is precomputed here from the **real
+  `OrbitTrack`** (ground track + phase-gated SAA), so the page cannot drift into a second,
+  contradictory copy of the physics.
+- **`index.html`** — self-contained (inline CSS/JS). Orbit **ring** with the SAA as a shaded
+  **phase arc** (0.35–0.455), not a lat/lon polygon — this is the honest rendering, since SAA
+  membership *is* a phase window and the ground track is display-only (labelled as such on the
+  page). Live counters (upsets / detected→rolled-back / steps replayed / ABFT coverage), dual
+  loss curves (protected vs unprotected vs clean baseline) with a **"you are here" marker that
+  jumps backward on each rollback** (the recovery shown, not deduped), a scrolling recovery
+  event log, status tiles, and a wall-clock overhead ticker + final banner.
+- **Colours are dataviz-validated:** protected `#0891b2` / unprotected `#d97706` pass all six
+  checks on the dark surface (CVD ΔE 19–27); every curve is also direct-labelled, so identity
+  never rests on colour alone.
+- **Verified by actually rendering it** in Chrome from T+00:00 through completion: death burst
+  at step 141, protected completing 200/200, all counters landing on the telemetry's numbers
+  (49 / 7 / 105 / val 2.4288).
+
+### 2. `demo/run_demo.sh`
+
+Trains the three identical seeded runs (`baseline` rate 0 · `unprotected` 3e-6 dies ·
+`protected` 3e-6 survives) with `--log-every 1`, bundles the dashboard, opens it. **Deterministic
+end to end** — re-running produces a **byte-identical `telemetry_data.js`** (no live timestamp on
+purpose). **~25 s wall on this Mac** (MPS), far under the 5-min target. Tolerates the unprotected
+run's non-zero death exit; warns loudly if it ever fails to die. `NO_OPEN=1` skips auto-open.
+
+`telemetry_data.js` is committed (the dashboard works on a fresh clone with no build step);
+`runs/` stays git-ignored.
+
+### 3. `README.md`
+
+Rewritten from the stub: results tables (demo, precision/recall, per-tier overhead, calibration),
+architecture, run instructions, honesty flags, and full citations traced to the research doc.
+
+**Honesty (PLAN rules held).** The 3e-6 demo rate (≈300× the flight band, model-size
+compensation) is disclosed in the dashboard, the README, and `run_demo.sh`. The overhead ticker
+shows **wall-clock incl. replay** (+117% at the demo rate) and says so; the **calibrated
+detection-only** figure (+5.4% at scale) is carried separately in the README so the two are never
+conflated. The two uncited constants (`DEFAULT_ECC_LEAK_FRACTION`, SEFI `p_per_transit`) were
+**not touched** and remain off by default.
+
+---
+
+## What M4b still needs (unchanged from the handoff §2–§4 above — all GPU-gated)
+
+The no-GPU work is done; everything left requires the rented A100/H100 and was explicitly out of
+this session's scope:
+
+1. **Real-scale numbers on CUDA** (handoff §2): re-run `bench/overhead.py` and `bench/detect_eval.py`
+   at demo scale (`--n-layer 12 --n-embd 768`), and measure **protected-run wall-clock overhead at
+   calibrated rates (1e-9..1e-7)** — never yet measured; the ticker's +117% is a demo-rate artifact.
+   At H100 scale (6.4e11 bits) the calibrated band delivers 640–64,000 flips/day **with no
+   elevation**, so the M4b demo should drop the elevated rate entirely — the strongest possible slide.
+   **Do not quote any MPS/CPU figure as the headline.**
+2. **The video** (handoff §2): record the dashboard running the real-scale story once the numbers
+   above exist. The dashboard is built and deterministic; it only needs the GPU-scale JSONL. When
+   re-pointing it, note the dashboard currently hard-expects `runs/{baseline,unprotected,protected}-s<seed>.jsonl`
+   and a `--protect off` rate-0 baseline; a calibrated-rate run may not `--protect off`-die within
+   200 steps, so the demo may need more steps or a longer mission (the dashboard scales to `t_max`
+   and `steps_requested` automatically — no front-end change needed).
+3. **Real DCGM/Xid** (handoff §3): implement `DcgmXidSource.poll()`; interface already in place.
+4. **The two citations** (handoff §4): a real multi-bit-upset fraction and a SEFI per-transit
+   probability, or state them as assumptions on the slide. Still off by default; nothing shipped
+   depends on them.
+
+Nothing in M4a blocks any of the above. **Stopping here per instructions.**
