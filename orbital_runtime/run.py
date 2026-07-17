@@ -9,9 +9,16 @@ from pathlib import Path
 
 import torch
 
+from .ckpt.policy import CheckpointPolicy
+from .ckpt.recover import RecoveryOrchestrator
+from .ckpt.saver import CheckpointSaver
+from .detect import Detector, GuardTier
+from .detect.abft import AbftTier
+from .detect.watcher import SimulatedXidSource, WatcherTier
 from .inject.injector import RadiationEnvironment
 from .inject.sefi import SefiInjector
 from .inject.xid import XidSimulator
+from .rng import STREAM_ABFT, stream
 from .orbit.flux import (
     DEFAULT_BASE_RATE_UPSETS_PER_BIT_DAY,
     DEFAULT_SAA_MULTIPLIER,
@@ -68,6 +75,19 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.5,
         help="fraction of upsets routed to activations when enabled",
     )
+
+    d = p.add_argument_group("protection (--protect on)")
+    d.add_argument("--no-abft", action="store_true", help="tier 1 only")
+    d.add_argument("--abft-rate", type=float, default=0.1, help="ABFT sampling outside SAA")
+    d.add_argument("--abft-saa-rate", type=float, default=1.0, help="ABFT sampling in SAA")
+    d.add_argument("--ckpt-interval", type=int, default=50, help="checkpoint cadence, steps")
+    d.add_argument("--ckpt-saa-interval", type=int, default=10, help="cadence inside SAA")
+    d.add_argument(
+        "--no-adaptive",
+        action="store_true",
+        help="disable orbit-aware vigilance (uniform sampling + cadence)",
+    )
+    d.add_argument("--sync-checkpoint", action="store_true", help="disable async DCP save")
 
     w = p.add_argument_group("workload")
     w.add_argument("--batch-size", type=int, default=16)
@@ -135,14 +155,41 @@ def main(argv: list[str] | None = None) -> int:
     detector = None
     recovery = None
     if args.protect == "on":
-        # M2/M3 wire these in. Fail loudly rather than silently running an
-        # unprotected job while the banner claims protection.
-        print(
-            "error: --protect on is not implemented yet (M2 detection / M3 recovery).",
-            file=sys.stderr,
+        abft = (
+            AbftTier(
+                workload.model,
+                flux=flux,
+                base_sample_rate=args.abft_rate,
+                saa_sample_rate=args.abft_saa_rate,
+                adaptive=not args.no_adaptive,
+                rng=stream(args.seed, STREAM_ABFT),
+            ).attach()
+            if not args.no_abft
+            else None
         )
-        telemetry.close()
-        return 2
+        watcher = None
+        if env is not None:
+            watcher = WatcherTier(source=SimulatedXidSource(env.xid))
+        detector = Detector(guards=GuardTier(), abft=abft, watcher=watcher)
+
+        saver = CheckpointSaver(
+            workload.model,
+            workload.optimizer,
+            directory=Path(args.out) / f"{run_id}-ckpt",
+            use_async=not args.sync_checkpoint,
+        )
+        recovery = RecoveryOrchestrator(
+            saver=saver,
+            policy=CheckpointPolicy(
+                track=OrbitTrack(),
+                base_interval=args.ckpt_interval,
+                saa_interval=args.ckpt_saa_interval,
+                adaptive=not args.no_adaptive,
+            ),
+            env=env,
+            telemetry=telemetry,
+            detector=detector,
+        )
 
     _print_header(args, workload, device, flux, env)
 
@@ -160,9 +207,29 @@ def main(argv: list[str] | None = None) -> int:
     if env is not None:
         s = env.stats
         print(
-            f"  upsets scheduled {env.scheduled_upsets} | delivered {s.flips} "
-            f"({s.flips_in_saa} in SAA) | non-finite weights {s.flips_nonfinite} | "
+            f"  upsets delivered {s.flips} ({s.flips_in_saa} in SAA) | "
+            f"non-finite weights {s.flips_nonfinite} | "
             f"activation hits {s.activation_hits} | SEFIs {s.sefis} | Xids {s.xids}"
+        )
+        if env.schedule_exhausted:
+            print(
+                "  WARNING: the run outlived its drawn radiation schedule; "
+                "the tail of this run was unirradiated. Do not quote it."
+            )
+    if detector is not None:
+        st = detector.stats()
+        print(
+            f"  detections {st['detections']} by tier {st.get('detections_by_tier', {})} | "
+            f"ABFT verified {st.get('abft_gemms_verified', 0)}/{st.get('abft_gemms_seen', 0)} "
+            f"GEMMs ({st.get('abft_sample_rate_actual', 0)*100:.0f}%)"
+        )
+    if recovery is not None:
+        rs = recovery.stats_dict()
+        print(
+            f"  checkpoints {rs['checkpoints_saved']} "
+            f"(pre-SAA {rs['pre_saa_saves']}, interval {rs['interval_saves']}) | "
+            f"rollbacks {rs['rollbacks']} | replayed {rs['replayed_steps']} steps | "
+            f"rejected {rs['checkpoints_rejected']}"
         )
     print(f"  telemetry: {log_path}")
     print("=" * 72)
@@ -190,7 +257,7 @@ def _print_header(args, workload, device, flux, env) -> None:
         f" | {args.saa_multiplier:.0f}x | share {flux.saa_share()*100:.1f}%"
     )
     if env is not None:
-        print(f"  scheduled upsets over run: {env.scheduled_upsets}")
+        print(f"  scheduled upsets over mission: {env.scheduled_within_mission}")
     print("=" * 72)
 
 

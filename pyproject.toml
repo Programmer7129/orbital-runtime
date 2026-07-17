@@ -24,3 +24,12 @@ include = ["orbital_runtime*", "demo*", "bench*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# DCP emits a DEBUG record per tensor per save; on a failure that buries the
+# actual assertion under thousands of lines of checkpoint logging.
+log_cli_level = "WARNING"
+filterwarnings = [
+    # DCP announces that torch.distributed is uninitialised on every save.
+    # Single-process is the intended mode here (PLAN.md: no distributed).
+    "ignore:torch.distributed is disabled:UserWarning",
+    "ignore:Detected an existing checkpoint:UserWarning",
+]

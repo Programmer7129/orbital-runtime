@@ -265,17 +265,59 @@ def test_delivered_upsets_never_exceed_scheduled(tiny_workload):
     assert 0 < env.stats.flips <= env.scheduled_upsets
 
 
-def test_time_compression_maps_steps_onto_orbits(tiny_workload):
+def test_time_compression_maps_executed_work_onto_orbits(tiny_workload):
     """"90 minutes in orbit, 90 seconds on screen"."""
     w = tiny_workload()
     steps, orbits = 200, 2.0
     env = make_env(w, rate=0.0, seed=1, steps=steps, orbits=orbits)
     period = env.flux.track.period_s
 
-    assert env.t_sim(0) == 0.0
-    assert env.t_sim(steps) == pytest.approx(orbits * period)
-    assert env.t_sim(steps // 2) == pytest.approx(orbits * period / 2)
+    assert env.t_sim_for(0) == 0.0
+    assert env.t_sim_for(steps) == pytest.approx(orbits * period)
+    assert env.t_sim_for(steps // 2) == pytest.approx(orbits * period / 2)
     # The SAA arrives at a fixed FRACTION of the run, on any hardware.
-    in_saa_steps = [s for s in range(steps) if env.in_saa(s)]
+    in_saa_steps = [s for s in range(steps) if env.flux.track.in_saa(env.t_sim_for(s))]
     assert in_saa_steps
     assert len(in_saa_steps) == pytest.approx(steps * env.flux.track.saa_fraction, abs=2)
+
+
+def test_the_clock_counts_executed_work_and_never_rewinds(tiny_workload):
+    """The property that makes M3's replay cost honest.
+
+    Mission time is keyed to work executed, not to the training step index.
+    A rollback rewinds the step counter; it must NOT rewind the orbit --
+    otherwise a protected run could dodge radiation by rewinding the
+    universe, re-meeting the same upsets forever and making replay free.
+    """
+    w = tiny_workload()
+    env = make_env(w, rate=0.0, seed=1, steps=100, orbits=1.0)
+
+    assert env.now == 0.0
+    for _ in range(10):
+        env.tick()
+    after_ten = env.now
+    assert after_ten > 0.0
+    assert env.executed == 10
+
+    # Replaying step 5 advances the clock exactly like a first attempt.
+    env.advance(step=5)
+    env.tick()
+    assert env.now > after_ten
+    assert env.executed == 11
+
+
+def test_schedule_is_drawn_past_the_mission_so_replay_stays_irradiated(tiny_workload):
+    """A replaying run must not fly out of its own radiation schedule.
+
+    Without headroom the protected run would finish its last stretch in an
+    empty universe -- silently flattering the exact run we are trying to
+    prove.
+    """
+    w = tiny_workload()
+    env = make_env(w, rate=1e-4, seed=1, steps=100, orbits=1.0)
+
+    assert env.horizon_s > env.duration_s
+    assert env.scheduled_upsets > env.scheduled_within_mission
+    # Radiation still exists well past the nominal end of the mission.
+    assert any(e.t > env.duration_s for e in env.upsets)
+    assert not env.schedule_exhausted

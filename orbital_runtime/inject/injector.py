@@ -6,15 +6,39 @@ time advances.
 Time compression
 ----------------
 The demo is "90 minutes in orbit, 90 seconds on screen" (PLAN.md). Sim time
-and wall time are decoupled: a run of `n_steps` steps covering `orbits`
-orbits maps step -> sim time linearly,
+and wall time are decoupled: a run covering `orbits` orbits in `n_steps`
+steps maps executed work -> sim time linearly,
 
-    t_sim(step) = (step / n_steps) * orbits * period_s
+    t_sim = (executed_steps / n_steps) * orbits * period_s
 
 so the satellite crosses the SAA at a fixed FRACTION of the run regardless
 of how fast the hardware is. That is what makes the demo reproducible on a
 laptop and on an A100 alike, and it is why the schedule is drawn in sim
 time up front rather than sampled per step.
+
+The clock counts EXECUTED steps, not the training step index
+------------------------------------------------------------
+These differ the moment M3 rolls back, and the distinction is the
+difference between an honest recovery demo and a rigged one.
+
+A rollback rewinds the training step counter. The satellite does not fly
+backwards. If sim time were keyed to the training step, a rollback would
+rewind the orbit too -- the run would re-enter the SAA it just escaped, meet
+the very same scheduled upsets again, and be unable to make progress. Worse,
+replay would be FREE in mission time: the protected run would dodge
+radiation by rewinding the universe, and the demo would be measuring a
+physical impossibility.
+
+Keying to executed steps makes replay cost exactly what it should: real time
+passes, the orbit advances, and fresh radiation arrives while the run redoes
+work it had already done. That cost is the honest price of protection, and
+it is what the overhead number is supposed to include.
+
+Consequence: a protected run that replays reaches sim times beyond
+`orbits * period`, so the schedule is drawn over a longer horizon (see
+SCHEDULE_HEADROOM). Both runs consume the same schedule PREFIX, so they
+still face identical radiation for identical work -- the controlled
+experiment survives.
 
 Determinism (PLAN.md design rule 3)
 -----------------------------------
@@ -44,6 +68,17 @@ from .compute import ComputeInjector
 from .memory import MemoryInjector
 from .sefi import SefiCrash, SefiEvent, SefiInjector
 from .xid import XidSimulator
+
+
+# How much further than the nominal mission the fault schedule is drawn.
+#
+# A protected run that rolls back executes more steps than it trains, so it
+# reaches sim times past `orbits * period`. Without headroom the schedule
+# would simply run out and the protected run would finish its last stretch
+# in a radiation-free universe -- silently flattering exactly the run we are
+# trying to prove. 3x covers heavy replay; exceeding it is reported rather
+# than passed over (see `schedule_exhausted`).
+SCHEDULE_HEADROOM = 3.0
 
 
 @dataclass
@@ -106,9 +141,12 @@ class RadiationEnvironment:
         self.activation_share = activation_share if inject_activations else 0.0
 
         # --- draw the entire fault timeline up front (determinism) ---
-        self.upsets: list[UpsetEvent] = flux.sample(0.0, self.duration_s, seed)
+        # Drawn over the headroom horizon, not the nominal mission, so a
+        # replaying run keeps meeting radiation past its nominal end.
+        self.horizon_s = self.duration_s * SCHEDULE_HEADROOM
+        self.upsets: list[UpsetEvent] = flux.sample(0.0, self.horizon_s, seed)
         self.sefi_events: list[SefiEvent] = self.sefi.schedule(
-            0.0, self.duration_s, stream(seed, STREAM_SEFI)
+            0.0, self.horizon_s, stream(seed, STREAM_SEFI)
         )
 
         self._rng_mem = stream(seed, STREAM_MEMORY)
@@ -117,42 +155,72 @@ class RadiationEnvironment:
 
         self._upset_cursor = 0
         self._sefi_cursor = 0
-        self._t_sim = 0.0
+        self._executed = 0
 
         if self.compute is not None:
             self.compute.attach()
 
     # ------------------------------------------------------------------ #
-    # Clock
+    # Clock -- driven by executed work, never rewound
     # ------------------------------------------------------------------ #
 
-    def t_sim(self, step: int) -> float:
-        """Simulation time at a training step (the time-compression map)."""
-        return (step / self.n_steps) * self.duration_s
+    @property
+    def executed(self) -> int:
+        """Steps of work actually performed, including replayed ones."""
+        return self._executed
+
+    def t_sim_for(self, executed: int) -> float:
+        """The time-compression map: executed work -> orbital time."""
+        return (executed / self.n_steps) * self.duration_s
 
     @property
     def now(self) -> float:
-        return self._t_sim
+        """Current mission time."""
+        return self.t_sim_for(self._executed)
 
-    def in_saa(self, step: int) -> bool:
-        return self.flux.track.in_saa(self.t_sim(step))
+    @property
+    def in_saa(self) -> bool:
+        return self.flux.track.in_saa(self.now)
+
+    @property
+    def seconds_per_step(self) -> float:
+        """Sim seconds bought by one step of work (for lookahead)."""
+        return self.duration_s / self.n_steps
 
     @property
     def scheduled_upsets(self) -> int:
+        """Upsets in the whole drawn horizon (most are past the mission end)."""
         return len(self.upsets)
+
+    @property
+    def scheduled_within_mission(self) -> int:
+        """Upsets inside the nominal mission -- the number the demo quotes."""
+        return sum(1 for e in self.upsets if e.t <= self.duration_s)
+
+    @property
+    def schedule_exhausted(self) -> bool:
+        """True if the run outlived its drawn radiation.
+
+        Must never be True in a reported result: past this point the run is
+        flying through an empty universe, which would silently flatter it.
+        """
+        return self.now > self.horizon_s
+
+    def tick(self) -> None:
+        """One step of work executed. Mission time advances, never rewinds."""
+        self._executed += 1
 
     # ------------------------------------------------------------------ #
     # Dispatch
     # ------------------------------------------------------------------ #
 
-    def advance_to(self, step: int) -> None:
-        """Fire every fault scheduled at or before `step`'s sim time.
+    def advance(self, step: int) -> None:
+        """Fire every fault scheduled at or before the current mission time.
 
-        Called once per training step, BEFORE the forward pass, so that
+        Called once per step ATTEMPT, before the forward pass, so that
         activation hits armed here land in this step's forward.
         """
-        t = self.t_sim(step)
-        self._t_sim = t
+        t = self.now
 
         while (
             self._upset_cursor < len(self.upsets)
@@ -234,7 +302,7 @@ class RadiationEnvironment:
                 self.telemetry.emit(
                     EVENT_ACTIVATION,
                     step=step,
-                    t_sim=self._t_sim,
+                    t_sim=self.now,
                     fired=True,
                     **hit.as_record(),
                 )

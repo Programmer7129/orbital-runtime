@@ -9,6 +9,8 @@ use the real H100 bit count).
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 import torch
 
@@ -30,9 +32,9 @@ def corpus_exists() -> bool:
 def tiny_workload(corpus_exists):
     """A fresh tiny nanoGPT on CPU."""
 
-    def _build(seed: int = 1337, **kw):
+    def _build(seed: int = 1337, device: str = "cpu", **kw):
         opts = {**TINY, **kw}
-        return build_nanogpt(seed=seed, device="cpu", **opts)
+        return build_nanogpt(seed=seed, device=device, **opts)
 
     return _build
 
@@ -61,3 +63,13 @@ def device(request) -> str:
     """Every device available here. Guards PLAN.md rule 1 automatically:
     a CPU-only assumption fails the MPS pass of the same test."""
     return request.param
+
+
+def pytest_configure(config):
+    """Quiet DCP's per-tensor DEBUG logging.
+
+    It emits a record per tensor per save, which on a failure buries the
+    actual assertion under thousands of lines of checkpoint bookkeeping.
+    """
+    logging.getLogger("c10d-NullHandler-dcp_logger").setLevel(logging.WARNING)
+    logging.getLogger("torch.distributed.checkpoint").setLevel(logging.WARNING)

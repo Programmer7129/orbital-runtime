@@ -19,6 +19,7 @@ from typing import Any
 
 import torch
 
+from .ckpt.recover import RecoveryExhausted
 from .inject.injector import RadiationEnvironment
 from .inject.sefi import SefiCrash
 from .telemetry import EVENT_RUN_END, EVENT_RUN_START, EVENT_STEP, Telemetry
@@ -29,6 +30,8 @@ DEATH_NONE = None
 DEATH_NAN = "nan_loss"  # loss went non-finite: failure mode (a)
 DEATH_SEFI = "sefi"  # simulated crash/hang
 DEATH_EXPLODED = "loss_exploded"  # finite but absurd -- diverged past recovery
+DEATH_UNRECOVERABLE = "unrecoverable"  # no checkpoint predates the corruption
+DEATH_REPLAY_BUDGET = "replay_budget"  # replayed so much it never converged
 
 
 # A loss above this is treated as a dead run even while still finite.
@@ -51,9 +54,16 @@ class StepRecord:
 
 @dataclass
 class TrainResult:
-    """Everything the demo banner and the tests need."""
+    """Everything the demo banner and the tests need.
+
+    `steps_completed` is TRAINING PROGRESS; `steps_executed` is WORK DONE.
+    They are equal without recovery and diverge the moment a rollback
+    replays a step. Conflating them would let a protected run claim credit
+    for redoing work it had already done.
+    """
 
     steps_completed: int
+    steps_executed: int
     steps_requested: int
     final_loss: float
     final_val_loss: float
@@ -75,10 +85,16 @@ class TrainResult:
     def losses(self) -> list[float]:
         return [r.loss for r in self.history]
 
+    @property
+    def replayed_steps(self) -> int:
+        """Work redone because of rollbacks."""
+        return max(0, self.steps_executed - self.steps_completed)
+
     def summary(self) -> str:
         status = "COMPLETED" if self.completed else f"DIED ({self.death_reason})"
+        replay = f" (+{self.replayed_steps} replayed)" if self.replayed_steps else ""
         return (
-            f"{status} at step {self.steps_completed}/{self.steps_requested} | "
+            f"{status} at step {self.steps_completed}/{self.steps_requested}{replay} | "
             f"train loss {self.final_loss:.4f} | val loss {self.final_val_loss:.4f} | "
             f"injected {self.injected} detected {self.detected} recovered {self.recovered} | "
             f"{self.wall_s:.1f}s"
@@ -92,6 +108,15 @@ class TrainConfig:
     eval_every: int = 0  # 0 = only at the end
     eval_batches: int = 8
     log_every: int = 10
+    # Ceiling on total step ATTEMPTS, including replays. Matches the
+    # injector's SCHEDULE_HEADROOM: past 3x the nominal mission the drawn
+    # radiation runs out, and a run continuing beyond it would be flying
+    # through an empty universe.
+    max_executed_steps: int = 0  # 0 = derive as steps * 3
+
+    def __post_init__(self) -> None:
+        if self.max_executed_steps <= 0:
+            self.max_executed_steps = self.steps * 3
 
 
 def train(
@@ -126,15 +151,15 @@ def train(
 
     try:
         while step < cfg.steps:
-            t_sim = env.t_sim(step) if env else 0.0
-            in_saa = env.in_saa(step) if env else False
+            t_sim = env.now if env else 0.0
+            in_saa = env.in_saa if env else False
 
             # --- radiation lands before the forward pass ---
             # Ordering is load-bearing: the ABFT checksums snapshotted after
             # the PREVIOUS step's optimizer.step() predate this radiation, so
             # a flip landing here is compared against pre-flip truth.
             if env is not None:
-                env.advance_to(step)  # may raise SefiCrash
+                env.advance(step)  # may raise SefiCrash
 
             # --- M2: tell the tiers where we are, and arm them ---
             if detector is not None:
@@ -165,6 +190,17 @@ def train(
             if detector is not None and detector.abft is not None:
                 detector.abft.refresh_checksums()
 
+            # Same trusted instant, same reason: a checkpoint taken any later
+            # could contain radiation that has already landed.
+            if recovery is not None:
+                recovery.after_step(step=step, t_sim=t_sim)
+
+            # One step of work is done. Mission time advances here and never
+            # rewinds -- a replayed step costs orbit time exactly like a
+            # first-attempt one.
+            if env is not None:
+                env.tick()
+
             loss_val = float(loss.item())
             record = StepRecord(step, loss_val, t_sim, in_saa, grad_norm)
             history.append(record)
@@ -189,9 +225,11 @@ def train(
             # --- M3: recovery on detection ---
             if verdict is not None and verdict.triggered and recovery is not None:
                 step = recovery.on_detection(step=step, verdict=verdict)
-                continue
+                continue  # replay from the restored step
 
             # --- unprotected death conditions ---
+            # Only reachable without recovery: a protected run rolls back on
+            # the detection above before a NaN can end it.
             if not math.isfinite(loss_val):
                 died, death_reason, death_step = True, DEATH_NAN, step
                 break
@@ -204,10 +242,22 @@ def train(
 
             step += 1
 
+            # A run that replays forever is not recovering. Bound the work,
+            # and report hitting the bound rather than spinning.
+            if len(history) >= cfg.max_executed_steps:
+                died, death_reason, death_step = True, DEATH_REPLAY_BUDGET, step
+                break
+
     except SefiCrash as e:
         died, death_reason, death_step = True, DEATH_SEFI, step
         if telemetry:
             telemetry.emit(EVENT_STEP, step=step, t_sim=e.t_sim, sefi=True)
+    except RecoveryExhausted as e:
+        # No checkpoint predates the corruption. Honest outcome: the run is
+        # lost, and saying so beats restoring a state we know is bad.
+        died, death_reason, death_step = True, DEATH_UNRECOVERABLE, step
+        if telemetry:
+            telemetry.emit(EVENT_STEP, step=step, unrecoverable=str(e))
 
     wall = time.perf_counter() - t_start
 
@@ -221,7 +271,10 @@ def train(
         val_loss = float("inf")
 
     result = TrainResult(
-        steps_completed=len(history),
+        # Training progress = how far the step counter actually got, which
+        # is NOT len(history) once replays put a step in there twice.
+        steps_completed=step if not died else (death_step or step),
+        steps_executed=len(history),
         steps_requested=cfg.steps,
         final_loss=history[-1].loss if history else float("inf"),
         final_val_loss=val_loss,
@@ -233,7 +286,11 @@ def train(
         injected=(env.stats.flips + env.stats.activation_hits) if env else 0,
         detected=detector.detections if detector is not None else 0,
         recovered=recovery.rollbacks if recovery is not None else 0,
-        stats=env.stats.as_dict() if env else {},
+        stats={
+            **(env.stats.as_dict() if env else {}),
+            **(detector.stats() if detector is not None else {}),
+            **(recovery.stats_dict() if recovery is not None else {}),
+        },
     )
 
     if telemetry:
@@ -245,6 +302,7 @@ def train(
             death_reason=death_reason,
             final_loss=result.final_loss,
             final_val_loss=result.final_val_loss,
+            steps_executed=result.steps_executed,
             wall_s=round(wall, 3),
             **result.stats,
         )

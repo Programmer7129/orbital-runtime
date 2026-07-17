@@ -261,3 +261,186 @@ of a 12.9 ms step — I had assumed it was the bottleneck and it was not.)
   suite speed. The mechanism is scale-free but the *numbers* are not — M4 should re-run
   `bench/detect_eval.py` at demo scale.
 - Watcher recall in sim measures plumbing, not ECC physics (carried from M1, still true).
+
+---
+
+## 2026-07-16 — M3: survive things — COMPLETE
+
+**What passed:** full suite green, **249 tests, ~30 s**. New: `test_ckpt.py` (23),
+`test_recovery.py` (18, incl. CPU **and** MPS).
+
+### The headline demo (`make demo`, seed 1337, 0.81M params, 2 orbits, 200 steps, MPS)
+
+| Run | Outcome | Val loss |
+|---|---|---|
+| clean baseline (rate 0) | completed | **2.4304** |
+| `--protect off` @ 3e-6 | **DIED (NaN) at step 141** | inf |
+| `--protect on` @ 3e-6 | **COMPLETED 200/200** | **2.4288** |
+
+The protected run absorbed 49 upsets, detected 7 (5 ABFT / 2 guard), rolled back 7 times,
+replayed 105 steps, and **recovered a model matching the never-irradiated baseline to 0.07%**
+(2.4288 vs 2.4304). Deterministic and reproducible.
+
+**M3 acceptance:** protected runs survive what kills the unprotected one across seeds 1/2/5
+(`test_protected_run_survives_what_kills_the_unprotected_one`); **bit-exact resume passes**
+(`test_restore_is_bit_exact` — every parameter and optimizer tensor identical to the last
+bit, plus `test_replay_after_restore_reproduces_the_original_trajectory`, which retraces the
+original losses exactly).
+
+**The honest limit — protection is not a magic wand.** At 10× the demo rate the protected run
+still converts certain death into survival, but the model ends degraded:
+
+| Rate | unprotected | protected val (clean = 2.4304) |
+|---|---|---|
+| 3e-6 | died @141 | **2.4288** — indistinguishable from clean |
+| 1e-5 | died @43 | 3.3604 — survived, degraded |
+| 3e-5 | died @38 | 3.3671 — survived, degraded |
+
+The residue is exactly M2's measured detection floor: strikes on bits ≤12 perturb a weight
+by <4e-4, sit below ABFT's noise floor, get baked into checkpoints, and accumulate. Rollback
+cannot undo what nothing detected. At the calibrated flight band this is negligible; at 300×
+that band it is visible, and it is reported rather than tuned away. **The demo rate is 3e-6
+for this reason** (set `DEMO_RATE=3e-5` to see the degraded regime).
+
+### The design decision that matters most: the clock counts EXECUTED steps
+
+A rollback rewinds the training step. **The satellite does not fly backwards.** Keying sim
+time to the training step would have rewound the orbit too — the run would re-enter the SAA
+it just escaped, meet the identical scheduled upsets forever, and never progress. Worse,
+**replay would be free**: the protected run could dodge radiation by rewinding the universe,
+and the demo would measure a physical impossibility.
+
+Keying to executed work makes replay cost what it should. The protected demo run executed 312
+steps to train 200, flying **1.6× the nominal mission** and meeting 49 upsets where the
+mission nominally scheduled 36. Verified by `test_replay_costs_orbit_time`. Consequence: the
+schedule is drawn over a 3× horizon (`SCHEDULE_HEADROOM`), because a replaying run that flew
+out of its own schedule would finish in an empty universe — silently flattering the exact run
+we are trying to prove. `schedule_exhausted` reports it if that ever happens.
+
+### M2's latency measurement became M3 behaviour
+
+The rollback margin is **per detection reason**, not a global constant:
+
+- **ABFT mismatch → margin 1.** The trusted checksum is exactly one step old, so a mismatch
+  at step D localises the fault between D−1's update and D's forward. Any checkpoint ≤ D−1 is
+  provably safe. Same for a driver-timestamped Xid.
+- **NaN / z-score → margin 25.** These say only "something is wrong now"; M2 measured guard
+  latencies up to 24 steps.
+
+The first version used the pessimistic margin for everything. It threw away good checkpoints,
+**replayed 37 steps where 1 would do, then ran out of eligible checkpoints and declared a
+recoverable run unrecoverable.** Detection latency is not a slide statistic — it is literally
+how much work a rollback burns.
+
+**Bugs found (three, all real)**
+
+1. **MPS crash in the checkpoint path — a design-rule-1 violation the tests missed.**
+   `state_checksum` accumulates in float64, which MPS does not support. Every checkpoint test
+   was CPU-only, so `make demo` (which defaults to `--device auto` → MPS) raised on the very
+   machine this is developed on. Fixed by staging checkpoint tensors to CPU — which is also
+   the more correct design, since they are bound for host storage anyway. `test_recovery.py`
+   now runs the whole protected loop on every available device.
+2. **A step-0 checkpoint could never be restored.** It predates Adam's state entirely, so a
+   load template built from the live (now warm) state demanded `opt.*` keys that were never
+   written, and DCP raised. Checkpoints now record exactly which keys they hold — and restore
+   **drops** optimizer state the checkpoint predates, rather than leaving a warm, possibly
+   corrupted moment attached to step-0 weights.
+3. `state_checksum` over a NaN tensor returned NaN, so a corrupted checkpoint would compare
+   unequal to *itself* — verification failing for the wrong reason. Non-finites now map to a
+   deterministic sentinel: verification fails loudly and stably.
+
+**Other design decisions**
+
+- **Checkpoints are taken at the same trusted instant as ABFT's snapshot** — right after
+  `optimizer.step()`, before radiation lands. Saving any later would persist the fault into
+  the very checkpoint meant to escape it.
+- **Double buffering earns its keep** because the *newest* checkpoint is the *most likely to
+  be untrustworthy* (detection lags the fault). Every checkpoint self-verifies on restore; a
+  failed verification falls back to the older slot instead of losing the run.
+- **Best-effort rollbacks are counted separately** (`best_effort_rollbacks`). When nothing
+  provably predates the corruption we try the oldest checkpoint anyway, but a recovery made
+  on a guess must never be reported as a proven one — and it does not reset the failure
+  streak that stops us looping on a bad checkpoint.
+- **`RecoveryExhausted` is a real outcome**, surfaced as `death_reason="unrecoverable"`. A run
+  that cannot recover gets reported, not retried forever.
+- **`steps_completed` (progress) vs `steps_executed` (work)** are tracked separately, so a
+  protected run can never take credit for redoing work it had already done.
+
+**Blockers / honesty flags**
+
+- ⚠️ Sub-detection-floor accumulation (above) is the real limitation. Not a bug — a measured
+  boundary of what checksum-based detection can see.
+- ⚠️ Recovery overhead is large at demo rates (105–195 replayed steps for 200 trained) because
+  the rate is 300× the flight band. At calibrated rates rollbacks are rare. **M4 must report
+  wall-clock overhead of `--protect on` at realistic rates**; the M2 overhead table measures
+  detection only, not replay.
+- All M0–M2 flags still stand (uncited ECC leak fraction and SEFI probability, both off by
+  default; elevated rates as model-size compensation).
+
+---
+
+## 2026-07-16 — Handoff: exactly what M4 needs
+
+M0–M3 are complete and committed; the suite is green at 249 tests. **Stopping here per
+instructions.** M4 is "show things" — dashboard, cloud GPU, video, README.
+
+### 1. Dashboard (`demo/dashboard/`) — nothing exists yet
+
+The **only** input it needs is the JSONL telemetry at `runs/<tag>-s<seed>.jsonl`. It is
+self-sufficient by design and asserted so (`test_run_log_tells_the_whole_story`). Read it with
+`orbital_runtime.telemetry.read_events`. Events: `run_start`, `step`, `flip`, `activation`,
+`sefi`, `xid`, `detect`, `checkpoint`, `rollback`, `run_end`. Every record carries
+`seq`/`kind`/`step`/`t_sim`/`wall`.
+
+- Orbit map + SAA shading: `OrbitTrack.ground_track(t_sim)` gives (lat, lon);
+  `track.in_saa(t_sim)` gives the shading window. **The ground track is display-only** — SAA
+  membership is phase-gated, not lat/lon-derived (see `track.py`).
+- Dual loss curves: `step` events from the two runs' logs.
+- Upset counters: `flip` events carry `in_saa`, `bit`, `value_before/after`, `target_kind`.
+- Overhead ticker: `run_end` carries `wall_s`, `steps_executed`, `replayed_steps`.
+- ⚠️ **`train.py` emits `step` events only every `log_every` (default 10).** A smooth
+  dashboard curve needs `TrainConfig(log_every=1)` or interpolation.
+- ⚠️ A protected run's log contains **repeated step numbers** (replay). That is truthful, not
+  a bug — the dashboard should show the rollback as the story, not dedupe it away.
+
+### 2. Cloud GPU (rent A100/H100) — the numbers that must be re-measured there
+
+Nothing in the repo is CUDA-specific; `resolve_device("auto")` picks CUDA when present. Re-run:
+
+- `python -m bench.overhead --device cuda --n-layer 12 --n-embd 768` — **do not quote the
+  MPS/CPU figures.** Expect *better* than +5.4%: ABFT is kernel-launch-bound, and the cost
+  amortizes as GEMMs grow (measured 22.3% → 5.4% going 0.81M → 10.7M). Evidence, not proof.
+- `python -m bench.detect_eval --device cuda` at demo scale — the current precision/recall
+  (1.00/1.00) is measured on a **1-layer, 32-dim** model at 5e-4.
+- **Protected-run wall-clock overhead at calibrated rates (1e-9..1e-7)** — never yet measured.
+  The M2 table is detection cost only and excludes replay.
+- At H100 scale (6.4e11 bits) the **calibrated** rates finally bite: 640–64,000 flips/day
+  without any elevation. The M4 demo should not need an elevated rate at all — that alone is
+  a strong slide.
+
+### 3. Real DCGM/Xid (M4 is when PLAN.md permits it)
+
+`detect/watcher.py` already has the interface. Implement `DcgmXidSource.poll()`; it currently
+raises rather than returning `[]` deliberately. `WatcherTier` needs no change.
+
+### 4. Citations still owed (blocking acceptance criterion 3)
+
+- **`DEFAULT_ECC_LEAK_FRACTION = 0.02`** (`flux.py`) — a placeholder, not a citation. Needs a
+  real multi-bit-upset fraction before any `ecc_on` number is quoted. `ecc_off` (the demo
+  default) is unaffected.
+- **SEFI `p_per_transit`** (`sefi.py`) — the RADECS finding is qualitative; no per-transit
+  probability. Channel is off by default.
+- Both are flagged in-code. Everything else traces to `docs/research/technical-foundations.md`.
+
+### 5. README results table
+
+Numbers ready to quote (all reproducible, all in this file): the demo table above, M2's
+precision/recall and overhead tables, M1's 8/8-corrupted result, and M0's calibration anchors
+(640–64,000 flips/day; 89.8% SAA share vs the 80–97% flight band).
+
+### Suggested M4 order
+
+1. `log_every=1` + dashboard against existing JSONL (no GPU needed; highest demo value).
+2. Rent the GPU, re-measure the four items in §2, then record the video.
+3. Chase the two citations in §4 — or state them as assumptions on the slide. Do not quietly
+   ship the placeholder.
