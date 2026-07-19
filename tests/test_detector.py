@@ -262,3 +262,35 @@ def test_summarise_computes_precision_and_recall():
     assert s["precision"] == pytest.approx(0.5)
     assert s["recall"] == pytest.approx(0.5)
     assert s["median_latency_steps"] == 2
+
+
+def test_a_detection_before_the_corruption_is_not_a_true_positive():
+    """Regression for item 1: TP requires firing AT OR AFTER corruption.
+
+    A run corrupted at step 20 whose only detection fired at step 5 caught
+    nothing -- it is an early (spurious) fire, not a hit. Scoring it as a TP
+    (the old `detected=bool(detections)`) inflated recall.
+    """
+    from bench.detect_eval import RunOutcome, clopper_pearson, summarise
+
+    caught = RunOutcome(1, True, 20, True, 22, 2, False, 3)      # detect@22 >= 20 -> TP
+    early = RunOutcome(2, True, 20, True, 5, None, False, 3)     # detect@5  <  20 -> FN + early
+    missed = RunOutcome(3, True, 20, False, None, None, False, 3)  # no detection -> FN
+
+    s = summarise([caught, early, missed], "irradiated")
+    assert s["tp"] == 1
+    assert s["fn"] == 2  # both the early-only and the missed run
+    assert s["early_detections"] == 1
+    assert s["recall"] == pytest.approx(1 / 3)
+    lo, hi = s["recall_ci95"]
+    assert 0.0 < lo < s["recall"] < hi < 1.0  # a real interval, not a point
+
+
+def test_clopper_pearson_matches_known_values():
+    from bench.detect_eval import clopper_pearson
+
+    lo, hi = clopper_pearson(6, 6)   # the FIX-LIST worked example
+    assert lo == pytest.approx(0.5407, abs=1e-3)
+    assert hi == 1.0
+    assert clopper_pearson(0, 12)[0] == 0.0  # k=0 pins the lower bound
+    assert clopper_pearson(3, 3)[1] == 1.0   # k=n pins the upper bound

@@ -3,6 +3,7 @@
   "seeds": 12,
   "steps": 120,
   "device": "cpu",
+  "scoring_note": "TP requires first detection at or after the corruption step (item 1 fix). Precision proxy is the clean-run FP rate below; irradiated-cohort precision is vacuous (fp=tn=0). All ratios carry Clopper-Pearson 95% CIs.",
   "summaries": [
     {
       "label": "guards",
@@ -11,10 +12,16 @@
       "fp": 0,
       "fn": 2,
       "tn": 0,
+      "early_detections": 0,
       "precision": 1.0,
+      "precision_vacuous": true,
       "recall": 0.8333333333333334,
+      "recall_ci95": [
+        0.5158622513140327,
+        0.9791374745399075
+      ],
       "median_latency_steps": 24.5,
-      "max_latency_steps": 92
+      "max_latency_steps": 77
     },
     {
       "label": "guards+abft",
@@ -23,8 +30,14 @@
       "fp": 0,
       "fn": 0,
       "tn": 0,
+      "early_detections": 0,
       "precision": 1.0,
+      "precision_vacuous": true,
       "recall": 1.0,
+      "recall_ci95": [
+        0.7353515306029488,
+        1.0
+      ],
       "median_latency_steps": 2.0,
       "max_latency_steps": 13
     },
@@ -35,14 +48,30 @@
       "fp": 0,
       "fn": 0,
       "tn": 0,
+      "early_detections": 0,
       "precision": 1.0,
+      "precision_vacuous": true,
       "recall": 1.0,
+      "recall_ci95": [
+        0.7353515306029488,
+        1.0
+      ],
       "median_latency_steps": 2.0,
       "max_latency_steps": 13
     }
   ],
   "clean_false_positives": 0,
   "clean_runs": 12,
+  "clean_fp_rate": 0.0,
+  "clean_fp_ci95": [
+    0.0,
+    0.2646484693970509
+  ],
+  "corrupted": 12,
+  "corrupted_ci95": [
+    0.7353515306029488,
+    1.0
+  ],
   "outcomes": {
     "guards": [
       {
@@ -81,7 +110,7 @@
         "first_detection_step": null,
         "latency": null,
         "died": false,
-        "flips": 98,
+        "flips": 99,
         "tiers": {},
         "first_reason": ""
       },
@@ -186,8 +215,8 @@
         "corrupted": true,
         "corruption_step": 21,
         "detected": true,
-        "first_detection_step": 113,
-        "latency": 92,
+        "first_detection_step": 92,
+        "latency": 71,
         "died": true,
         "flips": 105,
         "tiers": {
@@ -249,7 +278,7 @@
         "first_detection_step": 22,
         "latency": 0,
         "died": false,
-        "flips": 98,
+        "flips": 99,
         "tiers": {
           "abft": 7
         },
@@ -426,7 +455,7 @@
         "first_detection_step": 22,
         "latency": 0,
         "died": false,
-        "flips": 98,
+        "flips": 99,
         "tiers": {
           "abft": 7
         },

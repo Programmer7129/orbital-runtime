@@ -55,6 +55,98 @@ from orbital_runtime.train import TrainConfig, train
 from orbital_runtime.workload import get_workload, resolve_device
 
 
+# --------------------------------------------------------------------------- #
+# Clopper-Pearson exact binomial confidence intervals
+# --------------------------------------------------------------------------- #
+# Every ratio here (recall, false-positive rate, corrupted fraction) is a
+# binomial proportion from a handful of runs. Reporting "6/6 = 1.00" without an
+# interval overstates certainty: 6/6 is consistent with a true rate anywhere
+# down to ~0.54 at 95%. Clopper-Pearson is the exact (conservative) interval,
+# implemented here from the regularized incomplete beta so the bench has no
+# scipy dependency (Numerical Recipes betacf; bisection for the inverse).
+
+
+def _betacf(a: float, b: float, x: float) -> float:
+    MAXIT, EPS, FPMIN = 300, 3e-16, 1e-300
+    qab, qap, qam = a + b, a + 1.0, a - 1.0
+    c = 1.0
+    d = 1.0 - qab * x / qap
+    if abs(d) < FPMIN:
+        d = FPMIN
+    d = 1.0 / d
+    h = d
+    for m in range(1, MAXIT + 1):
+        m2 = 2 * m
+        aa = m * (b - m) * x / ((qam + m2) * (a + m2))
+        d = 1.0 + aa * d
+        if abs(d) < FPMIN:
+            d = FPMIN
+        c = 1.0 + aa / c
+        if abs(c) < FPMIN:
+            c = FPMIN
+        d = 1.0 / d
+        h *= d * c
+        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+        d = 1.0 + aa * d
+        if abs(d) < FPMIN:
+            d = FPMIN
+        c = 1.0 + aa / c
+        if abs(c) < FPMIN:
+            c = FPMIN
+        d = 1.0 / d
+        de = d * c
+        h *= de
+        if abs(de - 1.0) <= EPS:
+            break
+    return h
+
+
+def _betai(a: float, b: float, x: float) -> float:
+    """Regularized incomplete beta I_x(a, b)."""
+    if x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
+    lbeta = math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
+    bt = math.exp(lbeta + a * math.log(x) + b * math.log1p(-x))
+    if x < (a + 1.0) / (a + b + 2.0):
+        return bt * _betacf(a, b, x) / a
+    return 1.0 - bt * _betacf(b, a, 1.0 - x) / b
+
+
+def _beta_ppf(p: float, a: float, b: float) -> float:
+    """Inverse of I_x(a, b) = p by bisection (monotone in x)."""
+    if p <= 0.0:
+        return 0.0
+    if p >= 1.0:
+        return 1.0
+    lo, hi = 0.0, 1.0
+    for _ in range(100):
+        mid = 0.5 * (lo + hi)
+        if _betai(a, b, mid) < p:
+            lo = mid
+        else:
+            hi = mid
+    return 0.5 * (lo + hi)
+
+
+def clopper_pearson(k: int, n: int, alpha: float = 0.05) -> tuple[float, float]:
+    """Exact two-sided 100*(1-alpha)% CI for k successes in n Bernoulli trials."""
+    if n == 0:
+        return (float("nan"), float("nan"))
+    lo = 0.0 if k == 0 else _beta_ppf(alpha / 2.0, k, n - k + 1)
+    hi = 1.0 if k == n else _beta_ppf(1.0 - alpha / 2.0, k + 1, n - k)
+    return (lo, hi)
+
+
+def _fmt_ratio(k: int, n: int) -> str:
+    """`k/n = 0.83 (95% CI 0.52-0.98)` -- the honest way to state a small ratio."""
+    if n == 0:
+        return f"{k}/{n} = n/a"
+    lo, hi = clopper_pearson(k, n)
+    return f"{k}/{n} = {k / n:.2f} (95% CI {lo:.2f}-{hi:.2f})"
+
+
 @dataclass
 class RunOutcome:
     seed: int
@@ -156,13 +248,30 @@ def evaluate_seed(
 
 
 def summarise(outcomes: list[RunOutcome], label: str) -> dict:
-    tp = sum(1 for o in outcomes if o.corrupted and o.detected)
-    fn = sum(1 for o in outcomes if o.corrupted and not o.detected)
+    # A corrupted run is a TRUE POSITIVE only if the detector fired AT OR AFTER
+    # the corruption step. `o.latency is not None` encodes exactly that (see
+    # evaluate_seed: latency is the gap to the first detection at/after
+    # corruption). A detection that PRECEDED the corruption catches nothing --
+    # it is an early (spurious) fire, folded into FN for recall and surfaced
+    # separately. This is the scoring bug the hostile review flagged (item 1):
+    # `detected=bool(detections)` scored a pre-corruption blip as a hit.
+    tp = sum(1 for o in outcomes if o.corrupted and o.latency is not None)
+    fn = sum(1 for o in outcomes if o.corrupted and o.latency is None)
     fp = sum(1 for o in outcomes if not o.corrupted and o.detected)
     tn = sum(1 for o in outcomes if not o.corrupted and not o.detected)
+    # Corrupted runs whose only detection came BEFORE the corruption.
+    early = sum(
+        1 for o in outcomes if o.corrupted and o.detected and o.latency is None
+    )
 
+    # Precision here is VACUOUS on a pure irradiated cohort (fp = tn = 0 by
+    # construction: there are no clean runs to raise a false positive), so it is
+    # always 1.0 whenever tp > 0 and says nothing. Kept for the mixed-cohort
+    # unit test; the headline precision proxy is the clean-run FP rate reported
+    # by main(). Recall, by contrast, is a real measurement.
     precision = tp / (tp + fp) if (tp + fp) else float("nan")
     recall = tp / (tp + fn) if (tp + fn) else float("nan")
+    recall_lo, recall_hi = clopper_pearson(tp, tp + fn) if (tp + fn) else (float("nan"), float("nan"))
     lat = [o.latency for o in outcomes if o.latency is not None]
 
     return {
@@ -172,8 +281,11 @@ def summarise(outcomes: list[RunOutcome], label: str) -> dict:
         "fp": fp,
         "fn": fn,
         "tn": tn,
+        "early_detections": early,
         "precision": precision,
+        "precision_vacuous": (fp + tn) == 0,
         "recall": recall,
+        "recall_ci95": [recall_lo, recall_hi],
         "median_latency_steps": statistics.median(lat) if lat else None,
         "max_latency_steps": max(lat) if lat else None,
     }
@@ -244,25 +356,30 @@ def main(argv: list[str] | None = None) -> int:
         for s in range(1, args.seeds + 1)
     ]
     clean_fp = sum(1 for o in clean_outcomes if o.detected)
+    clean_n = len(clean_outcomes)
+    clean_fp_lo, clean_fp_hi = clopper_pearson(clean_fp, clean_n) if clean_n else (float("nan"), float("nan"))
 
     print("\n" + "=" * 78)
-    print(f"{'tiers':26} {'prec':>6} {'recall':>7} {'TP':>3} {'FP':>3} {'FN':>3} {'lat(med)':>9}")
+    print(f"{'tiers':26} {'recall (95% CI)':>22} {'TP':>3} {'FN':>3} {'early':>5} {'lat(med)':>9} {'lat(max)':>9}")
     print("-" * 78)
     for s in summaries:
         lat = "-" if s["median_latency_steps"] is None else f"{s['median_latency_steps']:.0f}"
+        latmax = "-" if s["max_latency_steps"] is None else f"{s['max_latency_steps']:.0f}"
+        rc = _fmt_ratio(s["tp"], s["tp"] + s["fn"]).split(" = ")[1]  # "0.83 (95% CI ...)"
         print(
-            f"{s['label']:26} {s['precision']:6.2f} {s['recall']:7.2f} "
-            f"{s['tp']:3d} {s['fp']:3d} {s['fn']:3d} {lat:>9}"
+            f"{s['label']:26} {rc:>22} {s['tp']:3d} {s['fn']:3d} "
+            f"{s['early_detections']:5d} {lat:>9} {latmax:>9}"
         )
     print("=" * 78)
     print(
-        f"\nfalse positives on {len(clean_outcomes)} clean (unirradiated) runs: "
-        f"{clean_fp}/{len(clean_outcomes)}"
+        "\nprecision proxy = false-positive rate on CLEAN (unirradiated) runs "
+        "(the irradiated-cohort precision is vacuous: fp=tn=0 by construction):"
     )
+    print(f"  clean-run false positives: {_fmt_ratio(clean_fp, clean_n)}")
 
     corrupted = sum(1 for o in all_outcomes[configs[0]] if o.corrupted)
     died = sum(1 for o in all_outcomes[configs[0]] if o.died)
-    print(f"irradiated runs corrupted: {corrupted}/{args.seeds} (died: {died})")
+    print(f"irradiated runs corrupted: {_fmt_ratio(corrupted, args.seeds)} (died: {died})")
 
     best = all_outcomes["guards+abft+watcher"]
     by_reason: dict[str, int] = {}
@@ -280,9 +397,19 @@ def main(argv: list[str] | None = None) -> int:
                     "seeds": args.seeds,
                     "steps": args.steps,
                     "device": str(device),
+                    "scoring_note": (
+                        "TP requires first detection at or after the corruption "
+                        "step (item 1 fix). Precision proxy is the clean-run FP "
+                        "rate below; irradiated-cohort precision is vacuous "
+                        "(fp=tn=0). All ratios carry Clopper-Pearson 95% CIs."
+                    ),
                     "summaries": summaries,
                     "clean_false_positives": clean_fp,
-                    "clean_runs": len(clean_outcomes),
+                    "clean_runs": clean_n,
+                    "clean_fp_rate": (clean_fp / clean_n) if clean_n else None,
+                    "clean_fp_ci95": [clean_fp_lo, clean_fp_hi],
+                    "corrupted": corrupted,
+                    "corrupted_ci95": list(clopper_pearson(corrupted, args.seeds)),
                     "outcomes": {k: [asdict(o) for o in v] for k, v in all_outcomes.items()},
                 },
                 indent=2,
