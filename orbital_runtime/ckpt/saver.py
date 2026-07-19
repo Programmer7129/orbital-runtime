@@ -42,6 +42,31 @@ from torch.distributed.checkpoint.state_dict_saver import async_save
 DEFAULT_BUFFERS = 2
 
 
+def _device_rng_state(device: torch.device) -> tuple[str, torch.Tensor] | None:
+    """Capture the accelerator RNG state for `device`, staged to CPU.
+
+    The CPU generator alone does NOT make replay bit-exact for a workload with
+    dropout>0 on CUDA/MPS: those layers draw from the DEVICE generator, so a
+    rollback that restored only `torch.get_rng_state()` would resume from a
+    different dropout mask and silently diverge. (Hostile review, item 13.)
+    Returns a (payload_key, cpu_byte_tensor) pair, or None for CPU.
+    """
+    if device.type == "cuda" and torch.cuda.is_available():
+        return "_meta.rng_cuda", torch.cuda.get_rng_state(device)
+    if device.type == "mps" and getattr(torch, "mps", None) is not None:
+        # torch.mps.get_rng_state() returns a CPU ByteTensor.
+        return "_meta.rng_mps", torch.mps.get_rng_state()
+    return None
+
+
+def _restore_device_rng(key: str, state: torch.Tensor) -> None:
+    cpu = state.to(torch.uint8).cpu()
+    if key == "_meta.rng_cuda" and torch.cuda.is_available():
+        torch.cuda.set_rng_state(cpu)
+    elif key == "_meta.rng_mps" and getattr(torch, "mps", None) is not None:
+        torch.mps.set_rng_state(cpu)
+
+
 def state_checksum(tensors: dict[str, torch.Tensor]) -> float:
     """A cheap order-independent checksum over tensor VALUES.
 
@@ -88,6 +113,9 @@ class Checkpoint:
     keys: tuple[str, ...] = ()
     verified: bool = False
     wall_s: float = 0.0
+    # Which device-RNG payload key this checkpoint carries (if any), so restore
+    # asks DCP for exactly the key that was written. "" means CPU-only.
+    device_rng_key: str = ""
     _future: Any = field(default=None, repr=False)
 
     def wait(self) -> Checkpoint:
@@ -218,6 +246,12 @@ class CheckpointSaver:
         payload: dict[str, Any] = dict(tensors)
         payload["_meta.step"] = torch.tensor([step], dtype=torch.int64)
         payload["_meta.rng"] = torch.get_rng_state()
+        # Accelerator RNG too, so dropout>0 replays bit-exactly (item 13).
+        device = next(self.model.parameters()).device
+        drng = _device_rng_state(device)
+        device_rng_key = ""
+        if drng is not None:
+            device_rng_key, payload[drng[0]] = drng[0], drng[1]
 
         future = None
         if self.use_async:
@@ -234,6 +268,7 @@ class CheckpointSaver:
             keys=tuple(sorted(tensors)),
             verified=True,  # checksummed from staged values at a trusted moment
             wall_s=time.perf_counter() - t0,
+            device_rng_key=device_rng_key,
             _future=future,
         )
         self.history.append(ck)
@@ -290,6 +325,13 @@ class CheckpointSaver:
         template: dict[str, Any] = {k: live[k].clone() for k in ck.keys}
         template["_meta.step"] = torch.tensor([0], dtype=torch.int64)
         template["_meta.rng"] = torch.get_rng_state()
+        if ck.device_rng_key:
+            # Ask DCP for the exact accelerator-RNG key this checkpoint wrote.
+            # The template tensor must match the saved shape; a freshly captured
+            # state on the same device provides exactly that.
+            drng = _device_rng_state(next(self.model.parameters()).device)
+            if drng is not None:
+                template[ck.device_rng_key] = drng[1].clone()
         dcp.load(template, checkpoint_id=str(ck.path))
 
         tensors = {k: v for k, v in template.items() if not k.startswith("_meta.")}
@@ -299,6 +341,8 @@ class CheckpointSaver:
 
         self._install_tensor_state(tensors)
         torch.set_rng_state(template["_meta.rng"].to(torch.uint8).cpu())
+        if ck.device_rng_key:
+            _restore_device_rng(ck.device_rng_key, template[ck.device_rng_key])
         self.restores += 1
         return True
 

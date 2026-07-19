@@ -105,6 +105,35 @@ def test_replay_after_restore_reproduces_the_original_trajectory(tiny_workload, 
     assert original == replayed  # exact
 
 
+def test_restore_round_trips_the_accelerator_rng_state(tiny_workload, tmp_path, device):
+    """Regression for item 13: the DEVICE generator, not just the CPU one.
+
+    A workload with dropout>0 on CUDA/MPS draws its masks from the accelerator
+    generator; restoring only the CPU generator would resume from a different
+    mask and diverge. The checkpoint must round-trip the device RNG too.
+    """
+    from orbital_runtime.ckpt.saver import _device_rng_state
+
+    w = tiny_workload(seed=3, device=device)
+    train_a_bit(w, 3)
+    ck = saver_for(w, tmp_path, use_async=False).save(step=3)
+
+    dev = torch.device(device)
+    at_save = _device_rng_state(dev)
+    if at_save is None:
+        pytest.skip(f"{device} has no separate accelerator RNG to round-trip")
+
+    # Perturb the device generator well away from the saved state.
+    for _ in range(5):
+        torch.rand(1024, device=dev)
+    assert not torch.equal(_device_rng_state(dev)[1], at_save[1])
+
+    assert saver_for(w, tmp_path, use_async=False).restore(ck)
+    assert torch.equal(_device_rng_state(dev)[1], at_save[1]), (
+        "device RNG state was not restored to the checkpointed value"
+    )
+
+
 def test_restore_recovers_a_model_from_catastrophic_corruption(tiny_workload, tmp_path):
     w = tiny_workload(seed=3)
     train_a_bit(w, 4)
