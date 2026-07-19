@@ -188,6 +188,11 @@ def test_rollback_margin_depends_on_which_tier_spoke():
     assert rec.lag_for(nan) == LAG_UNLOCALISED
     assert rec.lag_for(spike) == LAG_UNLOCALISED
     assert LAG_LOCALISED < LAG_UNLOCALISED
+    # The unlocalised margin must cover the MEASURED worst-case guard latency
+    # (bench/detect_eval.py reference config: 77 steps), not the median. A
+    # margin below it would roll back into still-corrupted state while claiming
+    # the rollback is proven safe. (Hostile review, item 8.)
+    assert LAG_UNLOCALISED >= 77
 
 
 def test_abft_detection_rolls_back_shallower_than_a_nan(tiny_workload, tmp_path):

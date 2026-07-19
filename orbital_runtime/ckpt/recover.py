@@ -72,9 +72,30 @@ from .saver import Checkpoint, CheckpointSaver
 # snapshot is one step old; a driver Xid is timestamped).
 LAG_LOCALISED = 1
 
-# For the tiers that only say "something is wrong now". M2 measured guard
-# latencies with a median of 24 steps; 25 covers the measured worst case.
-LAG_UNLOCALISED = 25
+# For the tiers that only say "something is wrong now" (NaN, z-score). These
+# localise nothing: a corruption can compound for many steps before the loss
+# visibly moves, so the margin must cover the MEASURED WORST-CASE guard latency,
+# not the median. bench/detect_eval.py (12 seeds, reference config) measures a
+# guards-only max latency of 77 steps; 80 covers it with headroom.
+#
+# The original value (25 ~ the median of 24) FALSELY claimed to "cover the
+# measured worst case": it would roll back to a checkpoint ~25 steps old while a
+# guard-detected corruption could be up to 77 steps old, restore state that
+# still contained the fault, AND mark that rollback "proven safe" (clearing the
+# failure streak). (Hostile review, item 8; fixed.)
+#
+# Disclosed, not hidden: a margin this deep often finds no checkpoint old enough
+# within the double buffer, so guard-triggered rollbacks fall to the best-effort
+# path (counted separately, streak-limited) rather than a proven one. Two
+# further blind spots on the guard tiers, both real:
+#   * after every rollback Detector.reset() zeroes the guard baselines, so the
+#     z-score/loss-spike checks are blind for DEFAULT_WARMUP_STEPS (40) replayed
+#     steps -- only the isfinite proof-check works there;
+#   * the worst-case latency itself is scale- and config-dependent (77 is the
+#     reference-config number, not a universal bound).
+# This is the quantitative case for ABFT, which localises a fault to ONE step
+# (LAG_LOCALISED = 1); the protected run leans on it, not on the guards.
+LAG_UNLOCALISED = 80
 
 DETECTION_LAG_BY_REASON: dict[str, int] = {
     REASON_ABFT_MISMATCH: LAG_LOCALISED,
