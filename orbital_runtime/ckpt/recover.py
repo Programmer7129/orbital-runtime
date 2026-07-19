@@ -229,6 +229,13 @@ class RecoveryOrchestrator:
     def _finish_rollback(
         self, step: int, ck: Checkpoint, verdict: Verdict, *, best_effort: bool = False
     ) -> int:
+        # The checkpoint holds POST-step-`ck.step` state (it was saved right
+        # after that step's optimizer.step()), so training resumes at the NEXT
+        # step. Returning ck.step would re-execute ck.step against weights that
+        # already contain its update -- applying it twice and desynchronising
+        # the replay from the original trajectory. (Off-by-one found by hostile
+        # review, item 6; fixed.) resume = ck.step + 1.
+        resume = ck.step + 1
         replayed = step - ck.step
         self.stats.rollbacks += 1
         self.stats.replayed_steps += replayed
@@ -245,6 +252,17 @@ class RecoveryOrchestrator:
         # and the ABFT trust anchor now points at pre-rollback weights.
         if self.detector is not None:
             self.detector.reset()
+            # Re-anchor ABFT's trusted checksums on the RESTORED (known-good)
+            # weights right now, before the next step's env.advance() can land
+            # fresh radiation. reset() clears _trusted; without re-anchoring
+            # here the first replayed forward would lazily snapshot a weight
+            # that this step's radiation may have already corrupted -- a
+            # one-step blind window after every rollback. (Hostile review,
+            # item 7; fixed.) The lazy "no radiation yet" fallback in
+            # _trusted_checksum is only sound for step 0 of a run.
+            abft = getattr(self.detector, "abft", None)
+            if abft is not None:
+                abft.refresh_checksums()
         # Same for the cadence: the step counter just moved backwards, and a
         # policy that thinks it is overdue would save on the very next step.
         self.policy.reset(ck.step)
@@ -255,6 +273,7 @@ class RecoveryOrchestrator:
                 step=step,
                 t_sim=self.env.now if self.env else 0.0,
                 restored_to=ck.step,
+                resume_step=resume,
                 replayed_steps=replayed,
                 slot=ck.slot,
                 trigger=verdict.reason,
@@ -263,7 +282,7 @@ class RecoveryOrchestrator:
                 best_effort=best_effort,
                 lag=self.lag_for(verdict),
             )
-        return ck.step
+        return resume
 
     def _emit_failed_rollback(self, step: int, verdict: Verdict, why: str) -> None:
         if self.telemetry:

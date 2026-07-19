@@ -87,8 +87,17 @@ class TrainResult:
 
     @property
     def replayed_steps(self) -> int:
-        """Work redone because of rollbacks."""
-        return max(0, self.steps_executed - self.steps_completed)
+        """Work redone because of rollbacks.
+
+        Authoritative from the recovery orchestrator (`stats["replayed_steps"]`)
+        rather than derived as `steps_executed - steps_completed`. An
+        unprotected run never replays, yet a dead one has one more history
+        entry than its 0-indexed death step, which made the derived form report
+        a spurious "(+1 replayed)". With the resume off-by-one fixed, the two
+        agree for surviving protected runs; using the orchestrator's count
+        keeps dead and unprotected runs at 0. (Hostile review, item 6; fixed.)
+        """
+        return int(self.stats.get("replayed_steps", 0))
 
     def summary(self) -> str:
         status = "COMPLETED" if self.completed else f"DIED ({self.death_reason})"
@@ -183,18 +192,6 @@ def train(
             )
             optimizer.step()
 
-            # The weights just changed legitimately, and no radiation has
-            # landed since. This instant -- and only this instant -- is when
-            # ABFT's trusted checksums may be taken. Snapshotting anywhere
-            # later would anchor trust to already-corrupted weights.
-            if detector is not None and detector.abft is not None:
-                detector.abft.refresh_checksums()
-
-            # Same trusted instant, same reason: a checkpoint taken any later
-            # could contain radiation that has already landed.
-            if recovery is not None:
-                recovery.after_step(step=step, t_sim=t_sim)
-
             # One step of work is done. Mission time advances here and never
             # rewinds -- a replayed step costs orbit time exactly like a
             # first-attempt one.
@@ -215,7 +212,12 @@ def train(
                     in_saa=in_saa,
                 )
 
-            # --- M2: detection ---
+            # --- M2: detection runs BEFORE we bless this step's weights ---
+            # observe() must precede refresh_checksums() and the checkpoint
+            # save. Otherwise a step the detector is about to condemn would
+            # first be laundered into ABFT's trusted anchor and persisted as a
+            # verified=True checkpoint -- the very state a rollback is trying
+            # to escape. (Found by hostile review, item 7; fixed.)
             verdict = None
             if detector is not None:
                 verdict = detector.observe(
@@ -225,7 +227,21 @@ def train(
             # --- M3: recovery on detection ---
             if verdict is not None and verdict.triggered and recovery is not None:
                 step = recovery.on_detection(step=step, verdict=verdict)
-                continue  # replay from the restored step
+                continue  # replay from the restored step; the bad step is
+                # never blessed: we skip the refresh/save below by continuing.
+
+            # The step passed detection: only now are its weights trusted.
+            # This instant -- right after a clean optimizer.step(), no
+            # radiation landed since -- is the only moment ABFT's checksums
+            # and a checkpoint may be taken. Snapshotting later would anchor
+            # trust to already-corrupted weights.
+            if detector is not None and detector.abft is not None:
+                detector.abft.refresh_checksums()
+
+            # Same trusted instant, same reason: a checkpoint taken any later
+            # could contain radiation that has already landed.
+            if recovery is not None:
+                recovery.after_step(step=step, t_sim=t_sim)
 
             # --- unprotected death conditions ---
             # Only reachable without recovery: a protected run rolls back on

@@ -200,11 +200,12 @@ def test_abft_detection_rolls_back_shallower_than_a_nan(tiny_workload, tmp_path)
     rec = RecoveryOrchestrator(
         saver=saver, policy=CheckpointPolicy(track=OrbitTrack()), detector=None
     )
-    # ABFT at step 45 -> newest checkpoint (40) is provably safe.
-    assert rec.on_detection(step=45, verdict=Verdict(True, 45, TIER_ABFT, REASON_ABFT_MISMATCH)) == 40
+    # ABFT at step 45 -> newest checkpoint (40) is provably safe. Resume is
+    # ck.step + 1 = 41: the checkpoint holds POST-step-40 weights (item 6).
+    assert rec.on_detection(step=45, verdict=Verdict(True, 45, TIER_ABFT, REASON_ABFT_MISMATCH)) == 41
 
-    # A NaN at 45 must rewind past the 25-step margin -> back to 10.
-    assert rec.on_detection(step=45, verdict=Verdict(True, 45, TIER_GUARD, REASON_NONFINITE_LOSS)) == 10
+    # A NaN at 45 must rewind past the 25-step margin -> checkpoint 10, resume 11.
+    assert rec.on_detection(step=45, verdict=Verdict(True, 45, TIER_GUARD, REASON_NONFINITE_LOSS)) == 11
 
 
 def test_rollback_never_targets_a_checkpoint_inside_the_suspect_window(
@@ -221,12 +222,16 @@ def test_rollback_never_targets_a_checkpoint_inside_the_suspect_window(
         saver=saver, policy=CheckpointPolicy(track=OrbitTrack()), detector=None
     )
     got = rec.on_detection(step=45, verdict=Verdict(True, 45, TIER_GUARD, REASON_NONFINITE_LOSS))
-    assert got == 10  # not 44
+    assert got == 11  # resume after checkpoint 10 (not 44, inside suspect window)
 
 
 def test_recovery_resets_the_detector(tiny_workload, tmp_path):
-    """Post-rollback, the baselines describe a state that no longer exists,
-    and ABFT's trust anchor points at pre-rollback weights."""
+    """Post-rollback, the guard baselines describe a state that no longer
+    exists (so they are dropped), and ABFT's trust anchor is RE-ANCHORED onto
+    the restored (known-good) weights rather than left pointing at pre-rollback
+    ones or lazily snapshotting a post-radiation weight (item 7)."""
+    import torch
+
     w = tiny_workload(seed=1)
     saver = CheckpointSaver(w.model, w.optimizer, directory=tmp_path / "ck", use_async=False)
     saver.save(step=0)
@@ -244,8 +249,65 @@ def test_recovery_resets_the_detector(tiny_workload, tmp_path):
     )
     rec.on_detection(step=1, verdict=Verdict(True, 1, TIER_ABFT, REASON_ABFT_MISMATCH))
 
+    # Guards forget everything; ABFT does NOT go blind. Its trust is re-anchored
+    # on the restored weights, so the very first replayed step is already
+    # protected (no one-step blind window).
     assert not guards.warm
-    assert abft._trusted == {}
+    assert abft._trusted != {}
+    for name, mod in w.model.named_modules():
+        if isinstance(mod, torch.nn.Linear):
+            expected = mod.weight.detach().sum(dim=0).to(torch.float32)
+            assert torch.equal(abft._trusted[name], expected), (
+                f"ABFT trust for {name} was not re-anchored on restored weights"
+            )
+
+
+def test_rollback_resumes_one_step_after_the_checkpoint(tiny_workload, tmp_path):
+    """Regression for item 6 (resume off-by-one).
+
+    A checkpoint saved by the loop holds POST-step state, so resume must be
+    ck.step + 1. Resuming at ck.step re-applies that step's update twice.
+    """
+    w = tiny_workload(seed=1)
+    saver = CheckpointSaver(w.model, w.optimizer, directory=tmp_path / "ck", use_async=False)
+    saver.save(step=7)
+    rec = RecoveryOrchestrator(
+        saver=saver, policy=CheckpointPolicy(track=OrbitTrack()), detector=None
+    )
+    resume = rec.on_detection(
+        step=10, verdict=Verdict(True, 10, TIER_ABFT, REASON_ABFT_MISMATCH)
+    )
+    assert resume == 8  # ck.step (7) + 1, not 7
+
+
+def test_replayed_counters_agree_and_dead_runs_report_zero(tiny_workload, tmp_path):
+    """Regression for item 6 (counter reconciliation).
+
+    For a surviving protected run the orchestrator's replayed_steps must equal
+    steps_executed - steps_completed exactly (they disagreed by n_rollbacks
+    before the off-by-one fix). A dead UNPROTECTED run must report 0 replayed
+    steps -- its 0-indexed death step previously masqueraded as "(+1 replayed)".
+    """
+    # Surviving protected run: the two counters agree exactly.
+    w = tiny_workload(seed=1)
+    env, detector, recovery = build_protected(w, tmp_path, seed=1, steps=120)
+    on = train(w, cfg=TrainConfig(steps=120), env=env, detector=detector, recovery=recovery)
+    assert on.recovered > 0
+    assert recovery.stats.replayed_steps == on.steps_executed - on.steps_completed
+    assert on.replayed_steps == recovery.stats.replayed_steps
+
+    # Dead unprotected run: never replays, so replayed_steps is 0 and the
+    # summary carries no "(+1 replayed)".
+    w2 = tiny_workload(seed=5)
+    bits = MemoryInjector(w2.model, w2.optimizer).static_resident_bits()
+    flux = FluxModel(bits_resident=bits, track=OrbitTrack(), base_rate_upsets_per_bit_day=RATE)
+    env2 = RadiationEnvironment(
+        w2.model, w2.optimizer, flux=flux, seed=5, n_steps=120, orbits=2.0
+    )
+    off = train(w2, cfg=TrainConfig(steps=120), env=env2)
+    assert off.died
+    assert off.replayed_steps == 0
+    assert "replayed" not in off.summary()
 
 
 def test_unrecoverable_run_says_so_rather_than_looping(tiny_workload, tmp_path):
@@ -270,7 +332,7 @@ def test_best_effort_rollbacks_are_counted_separately(tiny_workload, tmp_path):
         saver=saver, policy=CheckpointPolicy(track=OrbitTrack()), detector=None
     )
     got = rec.on_detection(step=45, verdict=Verdict(True, 45, TIER_GUARD, REASON_NONFINITE_LOSS))
-    assert got == 40
+    assert got == 41  # resume after best-effort checkpoint 40
     assert rec.stats.best_effort_rollbacks == 1
     assert rec.stats.rollbacks == 1
 
