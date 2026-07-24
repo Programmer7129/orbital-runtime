@@ -151,6 +151,62 @@ def test_bundle_carries_no_wall_clock_field(tmp_path):
     assert bundle["meta"]["wall_overhead"]
 
 
+def _serialize(bundle) -> str:
+    """Exactly how build.main writes the payload -- the bytes that ship."""
+    return json.dumps(bundle, indent=1, allow_nan=False)
+
+
+def test_two_runs_differing_only_in_wall_clock_produce_identical_bytes(tmp_path):
+    """Item 5: byte-exactness of the bundle.
+
+    Wall-clock is the ONLY nondeterministic content of a run's log. Two runs
+    that agree on everything except their wall readings must therefore reduce
+    to a byte-identical bundle. This is the builder-level proof of what the
+    empirical CPU rerun shows (two independent `--device cpu` demo runs hash
+    to the same telemetry_data.js); on MPS the loss values themselves drift at
+    the ULP, so byte-exactness is CPU-only and the determinism claim is worded
+    as such (README / run_demo.sh).
+    """
+
+    def logs(root, wall):
+        root.mkdir(parents=True, exist_ok=True)
+        with Telemetry(path=root / "baseline-s1337.jsonl", run_id="baseline-s1337") as t:
+            t.emit(EVENT_RUN_START, step=0, protected=False, irradiated=False,
+                   device="cpu", steps=3, scheduled_upsets=0)
+            for s, loss in enumerate([4.0, 3.0, 2.5]):
+                t.emit(EVENT_STEP, step=s, t_sim=float(s), loss=loss, in_saa=False)
+            t.emit(EVENT_RUN_END, step=3, t_sim=3.0, died=False, death_reason=None,
+                   final_loss=2.5, final_val_loss=2.43, steps_executed=3,
+                   wall_s=wall, flips=0, flips_in_saa=0)
+        with Telemetry(path=root / "unprotected-s1337.jsonl", run_id="unprotected-s1337") as t:
+            t.emit(EVENT_RUN_START, step=0, protected=False, irradiated=True,
+                   device="cpu", steps=3, scheduled_upsets=5)
+            t.emit(EVENT_STEP, step=0, t_sim=0.0, loss=4.0, in_saa=False)
+            t.emit(EVENT_STEP, step=1, t_sim=1.0, loss=float("nan"), in_saa=True)
+            t.emit(EVENT_RUN_END, step=1, t_sim=1.0, died=True, death_reason="nan_loss",
+                   final_loss=float("nan"), final_val_loss=float("inf"),
+                   steps_executed=2, wall_s=wall, flips=1, flips_in_saa=1)
+        with Telemetry(path=root / "protected-s1337.jsonl", run_id="protected-s1337") as t:
+            t.emit(EVENT_RUN_START, step=0, protected=True, irradiated=True,
+                   device="cpu", steps=3, scheduled_upsets=5)
+            t.emit(EVENT_CHECKPOINT, step=0, t_sim=0.0, reason="interval", slot=0)
+            t.emit(EVENT_STEP, step=0, t_sim=0.0, loss=4.0, in_saa=False)
+            t.emit(EVENT_STEP, step=1, t_sim=1.0, loss=2.5, in_saa=True)
+            t.emit(EVENT_RUN_END, step=2, t_sim=2.0, died=False, death_reason=None,
+                   final_loss=2.5, final_val_loss=2.42, steps_executed=2,
+                   # wall AND the summed checkpoint wall both vary; both are
+                   # in WALL_CLOCK_FIELDS, so neither may reach the bundle.
+                   wall_s=wall, checkpoint_wall_s=wall * 0.5, flips=1, flips_in_saa=1,
+                   detections=1, detections_by_tier={"abft": 1}, rollbacks=1,
+                   replayed_steps=1, abft_sample_rate_actual=0.19)
+
+    logs(tmp_path / "run_a", wall=1.0)
+    logs(tmp_path / "run_b", wall=999.0)
+    a = _serialize(dash.build(tmp_path / "run_a", seed=1337, generated_utc=""))
+    b = _serialize(dash.build(tmp_path / "run_b", seed=1337, generated_utc=""))
+    assert a == b, "wall-clock leaked into the bundle -- it is not byte-reproducible"
+
+
 def test_orbit_geometry_matches_the_real_track(tmp_path):
     bundle = _bundle(tmp_path)
     orbit = bundle["orbit"]

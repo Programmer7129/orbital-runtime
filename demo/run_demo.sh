@@ -10,9 +10,17 @@
 #   2. bundle their telemetry into the dashboard's data file
 #   3. open the split-screen mission-control dashboard
 #
-# Everything is seeded and deterministic: the same three curves, the same 49
-# upsets, the same 7 rollbacks, every time. Nothing here rents a GPU, records
-# video, or touches the calibrated constants -- that is M4b.
+# Determinism, stated honestly (hostile review, item 5):
+#   * SEMANTIC determinism holds on every backend, including MPS: the same 49
+#     upsets (43 in SAA), the same death at step 141, the same 8 detections ->
+#     8 rollbacks -> 111 replayed steps, the same event structure, every time.
+#   * BYTE determinism (an identical telemetry_data.js sha256 across reruns)
+#     holds on CPU (--device cpu), verified. It does NOT hold on MPS: MPS's
+#     nondeterministic float reductions drift the loss values at the ULP, so
+#     two MPS runs agree on the whole story but not on every last byte.
+# The wall-clock fields are the only other nondeterministic content and are
+# stripped from the bundle (build.py), so on CPU the artifact is bit-identical.
+# Nothing here rents a GPU, records video, or touches the calibrated constants.
 #
 # Why the rate is elevated (3e-6, ~300x the calibrated 1e-9..1e-7 flight band):
 # this demo model holds 7.8e7 resident bits against an H100's 6.4e11 -- four
@@ -84,9 +92,11 @@ echo ">> [3/3] PROTECTED under identical radiation — expected to SURVIVE"
 
 echo
 echo ">> bundling telemetry into the dashboard…"
-# No wall-clock timestamp here on purpose: with a fixed seed the whole pipeline
-# is byte-for-byte reproducible, so re-running the demo produces an identical
-# telemetry_data.js (no spurious git churn, nothing that could flake on stage).
+# Wall-clock fields are stripped from the bundle (build.py), and no build
+# timestamp is baked in. On CPU that makes telemetry_data.js byte-for-byte
+# reproducible across reruns (verified: identical sha256); on MPS the loss
+# values themselves drift at the ULP, so the bundle is semantically identical
+# but not byte-identical. Either way, nothing here flakes the STORY on stage.
 "$PY" demo/dashboard/build.py --seed "$SEED"
 
 DASH="$ROOT/demo/dashboard/index.html"

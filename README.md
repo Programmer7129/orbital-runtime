@@ -110,11 +110,21 @@ Raw JSON for all four: `bench/results/*_l4.json`.
 |---|---|---|---|
 | clean baseline | none | completed 200/200 | **2.4304** |
 | `--protect off` | 3e-6/bit-day | **DIED (NaN) at step 141** | ∞ |
-| `--protect on` | 3e-6/bit-day | **COMPLETED 200/200** | **2.4288** |
+| `--protect on` | 3e-6/bit-day | **COMPLETED 200/200** | **2.4304** |
 
-Protected run: **49 upsets absorbed, 7 detected** (5 ABFT · 2 guard), **7 rollbacks, 105 steps
+Protected run: **49 upsets absorbed, 8 detected** (6 ABFT · 2 guard), **8 rollbacks, 111 steps
 replayed**, ABFT sampling 19.1% average. Recovered a model **indistinguishable from the run that
-was never irradiated** (2.4288 vs 2.4304, +0.07%).
+was never irradiated** (2.4304 vs 2.4304, to four decimals). *(These counts are the current code's;
+they shifted from the M3-era 7/7/105 after the review's rollback-resume and detection-ordering fixes
+— items 6 & 7 — which is why they are regenerated from a fresh rerun, not carried over.)*
+
+> **Determinism, stated precisely (review item 5).** The demo is *semantically* deterministic on
+> every backend — same 49 upsets, same death step 141, same 8 rollbacks / 111 replayed steps, same
+> event structure, every run. It is *byte*-deterministic (identical `telemetry_data.js` sha256 across
+> reruns) **only on `--device cpu`**, which is verified; on MPS the nondeterministic float reductions
+> drift the loss values at the ULP, so two MPS runs match the whole story but not every byte. The
+> wall-clock fields — the only other nondeterministic content — are stripped from the bundle, so the
+> byte-exactness on CPU is real and not an artifact of a frozen timestamp.
 
 > ⚠️ **The 3e-6 rate is ~300× the calibrated flight band, and this is disclosed everywhere it
 > appears.** The demo model holds 7.8e7 resident bits against an H100's 6.4e11 — four orders of
@@ -199,9 +209,11 @@ the literature does position-aware protection scheduling.
    behind interfaces with simulation fallbacks.
 2. **Calibration is sacred** — every physics constant in `flux.py`/`track.py` carries a comment
    citing its source. (Two remaining exceptions are flagged below.)
-3. **Determinism** — seeded runs reproduce exactly: the flip schedule is drawn before step 0 from
-   named RNG streams, so protected and unprotected runs face a **bit-identical bombardment** and
-   the comparison is a controlled experiment. Turning ABFT on cannot shift the radiation.
+3. **Determinism** — the flip schedule is drawn before step 0 from named RNG streams (not from
+   float state), so protected and unprotected runs face a **bit-identical bombardment** and the
+   comparison is a controlled experiment; turning ABFT on cannot shift the radiation. Run *outputs*
+   are byte-reproducible on CPU and semantically reproducible on MPS (loss values drift at the ULP);
+   see the determinism note under the laptop demo (review item 5).
 4. **Overhead honesty** — overhead is measured against an A/A control; effects below the noise
    floor are reported as "below noise", never as a number.
 
