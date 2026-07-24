@@ -173,19 +173,24 @@ against faults that can actually hurt the model (a ReLU-masked upset is never sc
 
 ### Overhead per tier — dev machine MPS/CPU (measured, with an A/A noise-floor control)
 
-*(Dev-machine MPS/CPU; the NVIDIA L4 detection-only overhead is +1.6% adaptive — real-scale section above.)*
+*(Dev-machine MPS/CPU, all block_size=64; the NVIDIA L4 detection-only overhead is +1.6% adaptive — real-scale section above.)*
 
 | Config | CPU (0.81M) | MPS (0.81M) | MPS (10.7M) |
 |---|---|---|---|
-| A/A control (noise floor) | 3.2% | 0.8% | 0.3% |
+| A/A control (noise floor) | 0.1% | 0.8% | 0.3% |
 | tier 1 guards | below noise | below noise | below noise |
-| tier 1 + 2, **adaptive** sampling | **+7.2% ✓** | +22.3% | **+5.4% ✓** |
-| tier 1 + 2 @ 100% sampling | +15.0% | +127.6% | +36.3% |
+| tier 1 + 2, **adaptive** sampling | **+4.7% ✓** | +22.3% | **+5.4% ✓** |
+| tier 1 + 2 @ 100% sampling | +13.1% | +127.6% | +36.3% |
 
 Tier 1 is genuinely free. The **<10% target is met at scale** (+5.4% on 10.7M params) precisely
 because of **adaptive vigilance**: ABFT sampling is keyed to orbital position, covering the SAA —
 where ~90% of upsets land — completely, at 19% *average* sampling. 100% sampling never meets the
 target; that gap is the quantitative case for position-aware protection.
+
+*(The CPU column was regenerated with `make bench` and carries its config + torch version inside
+`bench/results/overhead-cpu.json` (item 19); it moved from an earlier, noisier run's +7.2%/+15.0%
+— same qualitative verdict. The MPS columns are the frozen M2 measurement, kept and labelled as
+such; their model dims predate the in-JSON config block.)*
 
 ### Environment calibration (H100-class, 6.4e11 resident bits)
 
@@ -325,6 +330,13 @@ These are tracked in `STATUS.md` and enforced in code; nothing here is quietly s
   the anomaly on only a *subset* of orbits, at varying depth. `track.py` discloses this; it is
   repeated here because the idealization **flatters adaptive vigilance** (it makes "checkpoint before
   every SAA entry" cleaner than reality, where entry timing wanders).
+- **Post-rollback guard warmup blindness (review item 8).** After every rollback the detector is
+  reset, so for the next **~40 steps** the guard z-score and loss-spike checks are in warmup and only
+  `isfinite` is live — a shallow, silent divergence starting in that window is invisible to the
+  *statistical* guards until warmup completes. And because a guard-detected corruption can be up to
+  **77 steps old** (measured), `LAG_UNLOCALISED` is now 80 and such deep rollbacks frequently fall to
+  the best-effort path (counted separately, never reported as proven). This is the quantitative case
+  for ABFT, whose one-step-old trusted checksum gives margin 1 and is unaffected by guard warmup.
 - **M4b is done on an NVIDIA L4 24GB** (not A100/H100): real-scale overhead, precision/recall, and
   calibrated-rate wall-clock are all re-measured above and labelled *NVIDIA L4 24GB*; the MPS/CPU
   tables below are kept and labelled separately. `DcgmXidSource` (real ECC/Xid polling) is

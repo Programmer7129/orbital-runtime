@@ -2,50 +2,60 @@
   "device": "cpu",
   "steps": 120,
   "repeats": 5,
+  "config": {
+    "n_layer": 4,
+    "n_embd": 128,
+    "batch_size": 16,
+    "block_size": 64,
+    "warmup": 25,
+    "seed": 1337,
+    "torch_version": "2.13.0"
+  },
+  "noise_floor_pct": 0.097,
   "results": [
     {
       "name": "baseline (unprotected)",
-      "median_step_ms": 27.715500094927847,
-      "mean_step_ms": 29.004597597910713,
-      "p90_step_ms": 30.30245890840888,
-      "total_s": 4.244922624900937,
+      "median_step_ms": 27.834791457280517,
+      "mean_step_ms": 28.00057424077143,
+      "p90_step_ms": 29.381750151515007,
+      "total_s": 4.066234500147402,
       "overhead_pct": 0.0,
       "notes": ""
     },
     {
       "name": "A/A control (baseline again)",
-      "median_step_ms": 28.603520477190614,
-      "mean_step_ms": 28.55375175907587,
-      "p90_step_ms": 30.09608294814825,
-      "total_s": 4.137449124827981,
-      "overhead_pct": 3.204056860678047,
-      "notes": "below the 3.2% noise floor; not resolvable"
+      "median_step_ms": 27.80766657087952,
+      "mean_step_ms": 28.114208352053538,
+      "p90_step_ms": 29.636041959747672,
+      "total_s": 4.074984458042309,
+      "overhead_pct": -0.09744957652234469,
+      "notes": "below the 0.1% noise floor; not resolvable"
     },
     {
       "name": "tier1: guards",
-      "median_step_ms": 28.279645484872162,
-      "mean_step_ms": 28.39515134304141,
-      "p90_step_ms": 29.869083082303405,
-      "total_s": 4.140608666930348,
-      "overhead_pct": 2.0354869586046473,
-      "notes": "below the 3.2% noise floor; not resolvable"
+      "median_step_ms": 27.757187956012785,
+      "mean_step_ms": 27.969546200862776,
+      "p90_step_ms": 29.169582994654775,
+      "total_s": 4.063735916977748,
+      "overhead_pct": -0.27880036890821785,
+      "notes": ""
     },
     {
       "name": "tier1+2: guards + ABFT (adaptive)",
-      "median_step_ms": 29.702708474360406,
-      "mean_step_ms": 30.253523590120796,
-      "p90_step_ms": 32.693332992494106,
-      "total_s": 4.458047791849822,
-      "overhead_pct": 7.170025338262735,
+      "median_step_ms": 29.149417066946626,
+      "mean_step_ms": 29.5458823229031,
+      "p90_step_ms": 31.123458174988627,
+      "total_s": 4.297803708119318,
+      "overhead_pct": 4.722958358368635,
       "notes": ""
     },
     {
       "name": "tier1+2: guards + ABFT (100% sampling)",
-      "median_step_ms": 31.868978519923985,
-      "mean_step_ms": 31.9968940942393,
-      "p90_step_ms": 33.30737492069602,
-      "total_s": 4.64546237513423,
-      "overhead_pct": 14.98612116241863,
+      "median_step_ms": 31.49302047677338,
+      "mean_step_ms": 31.894270819611847,
+      "p90_step_ms": 33.8038329500705,
+      "total_s": 4.608414958929643,
+      "overhead_pct": 13.14264928159184,
       "notes": ""
     }
   ]

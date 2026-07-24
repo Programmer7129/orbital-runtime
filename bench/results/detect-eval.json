@@ -3,6 +3,15 @@
   "seeds": 12,
   "steps": 120,
   "device": "cpu",
+  "config": {
+    "n_layer": 1,
+    "n_head": 2,
+    "n_embd": 32,
+    "batch_size": 8,
+    "block_size": 32,
+    "orbits": 2.0,
+    "torch_version": "2.13.0"
+  },
   "scoring_note": "TP requires first detection at or after the corruption step (item 1 fix). Precision proxy is the clean-run FP rate below; irradiated-cohort precision is vacuous (fp=tn=0). All ratios carry Clopper-Pearson 95% CIs.",
   "summaries": [
     {

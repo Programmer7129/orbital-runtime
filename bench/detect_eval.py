@@ -43,6 +43,8 @@ import statistics
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+import torch
+
 from orbital_runtime.detect import Detector, GuardTier
 from orbital_runtime.detect.abft import AbftTier
 from orbital_runtime.detect.watcher import SimulatedXidSource, WatcherTier
@@ -397,6 +399,18 @@ def main(argv: list[str] | None = None) -> int:
                     "seeds": args.seeds,
                     "steps": args.steps,
                     "device": str(device),
+                    # Provenance (item 19): model size + config + torch version
+                    # live inside the artifact, so a committed JSON is
+                    # self-describing and cannot be misread as a different scale.
+                    "config": {
+                        "n_layer": args.n_layer,
+                        "n_head": args.n_head,
+                        "n_embd": args.n_embd,
+                        "batch_size": args.batch_size,
+                        "block_size": args.block_size,
+                        "orbits": args.orbits,
+                        "torch_version": torch.__version__,
+                    },
                     "scoring_note": (
                         "TP requires first detection at or after the corruption "
                         "step (item 1 fix). Precision proxy is the clean-run FP "

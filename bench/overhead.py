@@ -283,6 +283,18 @@ def main(argv: list[str] | None = None) -> int:
                     "device": str(device),
                     "steps": args.steps,
                     "repeats": args.repeats,
+                    # Provenance (item 19): model size + config + torch version
+                    # inside the artifact, so a committed JSON is self-describing.
+                    "config": {
+                        "n_layer": args.n_layer,
+                        "n_embd": args.n_embd,
+                        "batch_size": args.batch_size,
+                        "block_size": args.block_size,
+                        "warmup": args.warmup,
+                        "seed": args.seed,
+                        "torch_version": torch.__version__,
+                    },
+                    "noise_floor_pct": round(noise_floor, 3),
                     "results": [asdict(r) for r in results],
                 },
                 indent=2,
