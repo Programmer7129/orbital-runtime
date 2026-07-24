@@ -651,12 +651,21 @@
 
   // ---------- footer ----------
   function updateFooter(t) {
-    el("f-wall").textContent = S.protected_wall_s != null ? S.protected_wall_s.toFixed(1) + "s" : "—";
+    // Wall-clock is nondeterministic and is stripped from freshly-built bundles
+    // (it is not a byte-reproducible artifact); it survives only in the frozen
+    // real-GPU bundle. Show it when present, otherwise say so rather than "0s".
+    el("f-wall").textContent = S.protected_wall_s != null ? S.protected_wall_s.toFixed(1) + "s" : "not fixed";
     el("f-pval").textContent = S.protected_val != null ? S.protected_val.toFixed(4) : "—";
     el("f-bval").textContent = S.baseline_val != null ? S.baseline_val.toFixed(4) : "—";
+    // The deterministic recovery story (rollbacks, replayed steps) is the
+    // headline; wall-clock overhead is stated as prose unless a measured float
+    // is present (the frozen real-GPU bundle).
+    var overheadClause = S.overhead_pct != null
+      ? "Overhead +" + S.overhead_pct + "% is wall-clock incl. replay"
+      : ((T.meta && T.meta.wall_overhead) || "Wall-clock overhead is nondeterministic");
     el("footer-note").textContent =
-      "Overhead " + (S.overhead_pct != null ? "+" + S.overhead_pct + "%" : "n/a") +
-      " is wall-clock incl. replay (" + (S.replayed_steps || 0) + " steps replayed, " +
+      overheadClause +
+      " (" + (S.replayed_steps || 0) + " steps replayed, " +
       (S.rollbacks || 0) + " rollbacks) at " + ((T.meta && T.meta.rate_label) || "the demo rate") +
       ". Detection-only overhead: " + ((T.meta && T.meta.detection_overhead) || "see README") + ".";
   }

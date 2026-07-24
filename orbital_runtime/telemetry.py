@@ -54,9 +54,13 @@ EVENT_ROLLBACK = "rollback"
 
 # Every field carrying a wall-clock reading. These are the only
 # nondeterministic content in a log, so determinism checks project them out.
-# Keep this list complete: a timing field that is missing here would make
-# `strip_wall=True` silently fail to prove determinism.
-WALL_CLOCK_FIELDS = frozenset({"wall", "wall_s"})
+# Keep this list COMPLETE: a timing field missing here would make
+# `strip_wall=True` silently fail to prove determinism. `checkpoint_wall_s`
+# (the summed checkpoint save time, emitted on run_end via the recovery stats)
+# was missing -- a hostile review verified it left one differing event in the
+# strip_wall projection of two identical seeded runs (item 5). Guarded by
+# tests/test_telemetry.py::test_strip_wall_leaves_no_nondeterministic_field.
+WALL_CLOCK_FIELDS = frozenset({"wall", "wall_s", "checkpoint_wall_s"})
 
 # How non-finite floats cross the JSON boundary. `json.dumps` spells these
 # as bare `NaN`/`Infinity`/`-Infinity`, which no conformant parser accepts;

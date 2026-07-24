@@ -133,8 +133,22 @@ def test_summary_comes_from_run_end(tmp_path):
     assert s["unprotected_death_step"] == 2
     assert s["baseline_val"] == 2.43
     assert s["protected_val"] == 2.42
-    # overhead = protected wall vs baseline wall = (2.0-1.0)/1.0 = 100%
-    assert s["overhead_pct"] == 100.0
+
+
+def test_bundle_carries_no_wall_clock_field(tmp_path):
+    """Item 5a: wall-clock is nondeterministic and must NOT be baked into the
+    bundle, or the artifact is not byte-reproducible across reruns."""
+    bundle = _bundle(tmp_path)
+    s = bundle["summary"]
+    for f in ("overhead_pct", "protected_wall_s", "baseline_wall_s"):
+        assert f not in s, f"{f} leaked into the summary"
+    for tag in ("baseline", "unprotected", "protected"):
+        assert "wall_s" not in bundle["runs"][tag], f"wall_s leaked into runs[{tag}]"
+    # The whole bundle text carries no wall-clock key at all.
+    assert '"wall_s"' not in json.dumps(bundle)
+    assert '"overhead_pct"' not in json.dumps(bundle)
+    # Wall-clock overhead is still communicated -- as deterministic prose.
+    assert bundle["meta"]["wall_overhead"]
 
 
 def test_orbit_geometry_matches_the_real_track(tmp_path):

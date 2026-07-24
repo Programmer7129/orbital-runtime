@@ -145,7 +145,12 @@ def _reduce_run(events: list[dict[str, Any]]) -> dict[str, Any]:
         "death_step": end.get("step") if end.get("died") else None,
         "steps_requested": start.get("steps"),
         "steps_executed": end.get("steps_executed"),
-        "wall_s": _num(end.get("wall_s")),
+        # NOTE: wall-clock is deliberately NOT copied into the bundle. It is the
+        # only nondeterministic content of a run, and a bundle that carried it
+        # would not be byte-reproducible across reruns -- breaking the demo's
+        # determinism claim on MPS (hostile review, item 5). Wall-clock overhead
+        # is a real measurement, surfaced as deterministic prose in meta
+        # (wall_overhead), not as a live float baked into the artifact.
         "final_loss": _num(end.get("final_loss")),
         "final_val_loss": _num(end.get("final_val_loss")),
         "flips_total": end.get("flips", 0),
@@ -217,6 +222,14 @@ DEFAULT_NOTE = (
     "H100's 6.4e11. The band itself is asserted in tests/test_flux.py; "
     "M4b re-measures at real scale on a GPU."
 )
+# Wall-clock overhead is a real measurement but nondeterministic, so it is
+# stated as prose (deterministic) rather than baked into the bundle as a live
+# float. The laptop default describes the replay-dominated demo-rate figure.
+DEFAULT_WALL_OVERHEAD = (
+    "wall-clock overhead is replay-dominated at this elevated demo rate and "
+    "varies run to run; the calibrated detection-only figure is the one to "
+    "quote (see meta.detection_overhead and the README)."
+)
 
 
 def build(
@@ -227,26 +240,20 @@ def build(
     rate_label: str = DEFAULT_RATE_LABEL,
     detection_overhead: str = DEFAULT_DETECTION_OVERHEAD,
     note: str = DEFAULT_NOTE,
+    wall_overhead: str = DEFAULT_WALL_OVERHEAD,
 ) -> dict[str, Any]:
     runs = {tag: _reduce_run(_events(run_dir, tag, seed)) for tag in TAGS}
 
     base, unprot, prot = runs["baseline"], runs["unprotected"], runs["protected"]
 
     # Mission clock spans the longest run (the protected one flies past where
-    # the unprotected run died). Everything animates against this.
+    # the unprotected run died). Everything animates against this. t_sim is the
+    # deterministic orbit clock (executed-work map), never wall time.
     t_max = max(
         (p["t_sim"] or 0.0)
         for run in runs.values()
         for p in run["curve"]
     )
-
-    # Overhead ticker: wall-clock of the protected run against the clean
-    # baseline. At the 3e-6 demo rate (300x the calibrated flight band) this is
-    # dominated by REPLAY, not detection -- the dashboard labels it as such and
-    # the README carries the calibrated per-tier detection overhead separately.
-    overhead_pct = None
-    if base["wall_s"] and prot["wall_s"]:
-        overhead_pct = round(100.0 * (prot["wall_s"] - base["wall_s"]) / base["wall_s"], 1)
 
     summary = {
         "seed": seed,
@@ -266,9 +273,10 @@ def build(
         "unprotected_death_step": unprot["death_step"],
         "unprotected_death_reason": unprot["death_reason"],
         "steps_requested": base["steps_requested"],
-        "protected_wall_s": prot["wall_s"],
-        "baseline_wall_s": base["wall_s"],
-        "overhead_pct": overhead_pct,
+        # No wall_s/overhead_pct here on purpose (item 5): they are
+        # nondeterministic. The recovery story below (rollbacks, replayed_steps)
+        # is deterministic and is the honest headline; wall-clock overhead is
+        # carried as prose in meta.wall_overhead.
         "device": prot["device"],
     }
 
@@ -278,6 +286,7 @@ def build(
             "seed": seed,
             "rate_label": rate_label,
             "detection_overhead": detection_overhead,
+            "wall_overhead": wall_overhead,
             "note": note,
         },
         "orbit": _orbit_geometry(t_max),
@@ -304,6 +313,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--rate-label", default=DEFAULT_RATE_LABEL)
     p.add_argument("--detection-overhead", default=DEFAULT_DETECTION_OVERHEAD)
     p.add_argument("--note", default=DEFAULT_NOTE)
+    p.add_argument("--wall-overhead", default=DEFAULT_WALL_OVERHEAD)
     args = p.parse_args(argv)
 
     bundle = build(
@@ -313,6 +323,7 @@ def main(argv: list[str] | None = None) -> int:
         rate_label=args.rate_label,
         detection_overhead=args.detection_overhead,
         note=args.note,
+        wall_overhead=args.wall_overhead,
     )
     payload = json.dumps(bundle, indent=1, allow_nan=False)
     args.out.write_text(

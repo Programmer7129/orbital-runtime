@@ -321,3 +321,62 @@ def test_two_seeded_runs_produce_identical_logs(tiny_workload, tmp_path):
         return read_events(path, strip_wall=True)
 
     assert run("a") == run("b")
+
+
+def test_strip_wall_leaves_no_nondeterministic_field(tiny_workload, tmp_path):
+    """WALL_CLOCK_FIELDS completeness (item 5).
+
+    A PROTECTED run emits `checkpoint_wall_s` on run_end (via the recovery
+    stats) -- a wall-clock field that was NOT in WALL_CLOCK_FIELDS, so
+    `strip_wall=True` left it in and two identical seeded runs disagreed on
+    exactly that one event. This is the protected analogue of
+    test_two_seeded_runs_produce_identical_logs (which is unprotected and so
+    never exercised checkpoint_wall_s).
+    """
+    from orbital_runtime.ckpt.policy import CheckpointPolicy
+    from orbital_runtime.ckpt.recover import RecoveryOrchestrator
+    from orbital_runtime.ckpt.saver import CheckpointSaver
+    from orbital_runtime.detect import Detector, GuardTier
+    from orbital_runtime.detect.abft import AbftTier
+    from orbital_runtime.rng import STREAM_ABFT, stream
+
+    def run(name: str):
+        path = tmp_path / f"{name}.jsonl"
+        telemetry = Telemetry(path=path, run_id=name)
+        w = tiny_workload(seed=3)
+        bits = MemoryInjector(w.model, w.optimizer).static_resident_bits()
+        flux = FluxModel(bits_resident=bits, base_rate_upsets_per_bit_day=5e-4)
+        env = RadiationEnvironment(
+            w.model, w.optimizer, flux=flux, seed=3, n_steps=100, orbits=2.0,
+            telemetry=telemetry,
+        )
+        abft = AbftTier(
+            w.model, base_sample_rate=0.1, saa_sample_rate=1.0, adaptive=True,
+            rng=stream(3, STREAM_ABFT),
+        ).attach()
+        detector = Detector(guards=GuardTier(), abft=abft)
+        recovery = RecoveryOrchestrator(
+            saver=CheckpointSaver(
+                w.model, w.optimizer, directory=tmp_path / f"ck_{name}", use_async=False
+            ),
+            policy=CheckpointPolicy(track=OrbitTrack(), base_interval=25, saa_interval=8),
+            env=env,
+            detector=detector,
+            telemetry=telemetry,
+        )
+        train(
+            w, cfg=TrainConfig(steps=100), env=env, telemetry=telemetry,
+            detector=detector, recovery=recovery,
+        )
+        telemetry.close()
+        raw = read_events(path)
+        run_end = next(e for e in raw if e["kind"] == "run_end")
+        # The field that exposed the bug must actually be present, or this test
+        # would pass vacuously.
+        assert "checkpoint_wall_s" in run_end
+        return read_events(path, strip_wall=True)
+
+    a, b = run("a"), run("b")
+    assert a == b
+    # And no wall-clock field of any kind survives the projection.
+    assert not any(f in rec for rec in a for f in WALL_CLOCK_FIELDS)
