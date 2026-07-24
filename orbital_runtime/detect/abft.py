@@ -292,8 +292,12 @@ class AbftTier:
             torch.maximum(lhs.abs().max(), rhs.abs().max()),
             torch.tensor(1e-8, device=lhs.device, dtype=lhs.dtype),
         )
-        eps = float(torch.finfo(x_.dtype).eps)
-        tol = scale * (self.safety_factor * eps * math.sqrt(max(k, 1)))
+        # Tolerance coefficient from the single source of truth (`_tolerance`),
+        # evaluated at unit scale so we can multiply the device-tensor `scale`
+        # without an early host sync. Previously this line inlined the same
+        # eps*sqrt(K)*safety formula -- a duplicate the hostile review flagged
+        # (item 17). One formula now, exercised by tests/test_abft.py.
+        tol = scale * _tolerance(x_.dtype, k, 1.0, self.safety_factor)
 
         self._pending.append((name, residual, tol, k, str(x_.dtype).replace("torch.", "")))
 
