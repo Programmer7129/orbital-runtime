@@ -62,9 +62,19 @@ unprotected run on its own.** The demo no longer needs a compensated rate.
 Unprotected: 128 upsets (114 in SAA), then NaN death. Protected: absorbed **326 upsets** (302 in
 SAA — it flies a longer, replayed mission), **10 detected → 10 rolled back** (8 ABFT · 2 guard),
 141 steps replayed, and finished. The committed dashboard (`demo/dashboard/telemetry_data.js`) is
-this exact run.
+this exact run. Model config: **n_layer=12, n_head=12, n_embd=768, block_size=256**.
 
-**Detection-only overhead** (radiation off — the cost of *looking*), **NVIDIA L4, 85.3M params**:
+> ⚠️ **This frozen L4 bundle predates the review's recovery fixes (items 6 & 7).** It was produced
+> on the rented GPU (now gone) by the M4b code, *before* the rollback-resume off-by-one and
+> detection-ordering fixes landed. Those fixes shift the exact rollback / replayed-step counts (the
+> laptop rerun moved 7/105 → 8/111), so a fresh GPU rerun would report slightly different counts here
+> too. The *semantic* story — unprotected dies at the calibrated rate, protected survives — is
+> unchanged, and is what the dashboard shows. The counts above are labelled M4b-as-measured and will
+> be regenerated on the next GPU session; they are not silently presented as current-code output.
+
+**Detection-only overhead** (radiation off — the cost of *looking*), **NVIDIA L4, 85.3M params,
+block_size=64** (note: a different config from the block_size=256 wall-clock table below — the two
+are not directly comparable):
 
 | Config | NVIDIA L4 24GB (85.3M) |
 |---|---|
@@ -77,20 +87,33 @@ Better than the MPS figure, exactly as predicted: ABFT is kernel-launch-bound an
 amortizes as GEMMs grow — at real scale even **100% sampling meets the <10% target**.
 
 **Protected-run WALL-CLOCK overhead at calibrated rates** (incl. DCP checkpoint I/O + replay —
-*never measured before M4b*), **NVIDIA L4** (seed 3, 150 steps, 4 orbits, 2 repeats, baseline 53.2 s):
+*never measured before M4b*), **NVIDIA L4, block_size=256** (seed 3, 150 steps, 4 orbits):
 
-| Rate (upsets/bit-day) | Wall-clock overhead | Rollbacks | Steps replayed | Outcome |
-|---|---|---|---|---|
-| 1e-9 | +27.9% | 1 | 10 | survived |
-| 1e-8 | +64.0% | 3 | 20 | survived |
-| 1e-7 | +139.6% | 9 | 64 | survived |
+> ⚠️ **These are single-seed, 2-repeat *indicative* numbers — a proper controlled rerun is pending.**
+> They were taken without interleaving and without an A/A noise-floor control, which violates the
+> project's own overhead-honesty rule (design rule 4). The controlled replacement —
+> `bench/protect_overhead_calibrated.py`, ≥5 round-robin repeats + A/A control — is written and
+> ready for the next GPU session; treat the percentages below as order-of-magnitude, not measured.
+
+| Rate (upsets/bit-day) | Wall-clock overhead | Rollbacks | Steps replayed | Final val loss | Outcome |
+|---|---|---|---|---|---|
+| 1e-9 | +27.9% | 1 | 10 | 2.559 | survived, clean |
+| 1e-8 | +64.0% | 3 | 20 | 2.560 | survived, clean |
+| 1e-7 | +139.6% | 9 | 64 | **4.038** | survived, **degraded** |
 
 This is the honest full-cost number the M2 table excludes. It is dominated **not by detection
 (+1.6%) but by full-model checkpoint I/O + replay** — the genuine price of turning the unprotected
 run's death into survival. Checkpoint cadence is a tunable knob; the replay share scales with how
 much real corruption actually landed.
 
-**Detector precision / recall at demo scale** (85.3M params, calibrated 1e-7, 6 seeds), **NVIDIA L4**:
+⚠️ **"Survived" is not the whole story at the band top.** At 1e-7 the protected run *completes*, but
+finishes at val **4.038** against the ~2.56 the 1e-9/1e-8 runs reach — it is **degraded, not
+recovered.** This is the M3 sub-detection-floor mechanism: strikes on ABFT-invisible low bits (≤ bit
+12, relative perturbation < 4e-4) sit below the checksum's noise floor, get baked into checkpoints,
+and accumulate; rollback cannot undo what nothing detected. At the calibrated flight band (1e-9/1e-8)
+it is negligible; at the band *top* it is visible, and it is reported, not tuned away.
+
+**Detector precision / recall at demo scale** (85.3M params, block_size=64, calibrated 1e-7, 6 seeds), **NVIDIA L4**:
 
 | Tiers | Precision (irradiated) | Recall | Median latency |
 |---|---|---|---|
