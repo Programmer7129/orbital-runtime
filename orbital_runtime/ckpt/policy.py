@@ -2,8 +2,9 @@
 
 Research doc SS3, the differentiator: "detection intensity and checkpoint
 cadence keyed to orbital position (crank ABFT sampling + checkpoint
-immediately before SAA entry). Novel; nothing in literature does
-position-aware protection scheduling."
+immediately before SAA entry)." The defensible novelty is position-aware
+protection scheduling for general-purpose GPU *training* runtimes;
+radiation-aware instrument safing itself is decades-old spacecraft practice.
 
 The argument in one line: ~90% of upsets arrive during ~10% of the orbit,
 and a checkpoint is only worth what it saves you from. A uniform cadence

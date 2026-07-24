@@ -219,12 +219,16 @@ demo/
 ├── workloads/nanogpt/  — char-level Shakespeare nanoGPT (CPU/MPS-sized)
 ├── dashboard/          — self-contained HTML/JS dashboard + build.py (JSONL → telemetry_data.js)
 └── run_demo.sh         — the headline demo, end to end
-bench/  overhead.py, detect_eval.py, results/*_l4.json   tests/  (263, green on macOS/MPS + Linux/CUDA)
+bench/  overhead.py, detect_eval.py, results/*_l4.json   tests/  (270 pass / 2 skipped on macOS/MPS)
 ```
 
 **Differentiator — "adaptive vigilance":** detection intensity *and* checkpoint cadence are keyed
-to orbital position (crank ABFT sampling + checkpoint immediately before SAA entry). Nothing in
-the literature does position-aware protection scheduling.
+to orbital position (crank ABFT sampling + checkpoint immediately before SAA entry). The narrow,
+defensible novelty claim is **position-aware protection scheduling for general-purpose GPU *training*
+runtimes** — not position-aware safing in general. Radiation-aware *instrument* safing (powering
+down or de-rating a sensor over the SAA) is decades-old spacecraft practice; what is new here is
+applying that idea to unmodified PyTorch training as a runtime, at the granularity of ABFT sampling
+and checkpoint cadence.
 
 ### Design rules (enforced, not aspirational)
 
@@ -246,7 +250,7 @@ the literature does position-aware protection scheduling.
 
 ```bash
 make venv install     # .venv + editable install + dev deps
-make test              # full suite: 262 pass on macOS/MPS (261 on Linux/CUDA), ~30-40 s
+make test              # full suite: 270 pass / 2 skipped on macOS/MPS, ~32 s (Linux/CUDA differs by platform-adaptive skips)
 make demo              # the three runs, raw (no dashboard)
 demo/run_demo.sh       # the three runs + dashboard (NO_OPEN=1 to skip auto-open)
 
@@ -282,6 +286,45 @@ These are tracked in `STATUS.md` and enforced in code; nothing here is quietly s
   runs `ecc_off` with SEFIs off, so no reported number depends on them. They need a real multi-bit-
   upset fraction / per-transit probability before any `ecc_on` or SEFI number is quoted. **(Untouched
   in M4b — §4 stays open.)**
+- **The ECC threat-model inversion — own it (review item 4).** The headline runs `ecc_off`: bare
+  single-bit DRAM upsets, which is the regime we can calibrate to published per-bit rates. But real
+  deployments fly **ECC-on**, and under ECC the single-bit DRAM flips this demo injects are exactly
+  the ones the hardware *corrects*. What actually leaks through ECC is the residual set —
+  multi-bit-upset leakage, SRAM/logic/flip-flop faults, and SEFIs — and those are precisely the
+  channels this repo has **off by default and uncited** (the two placeholders above). So `ecc_off` is
+  best understood as the **calibratable proxy regime**: it exercises the full detect→rollback→replay
+  machinery against a rate we can defend, while the ECC-on residual channels — the ones that matter in
+  flight — are what real **beam validation** would calibrate before any ECC-on number is quoted. We do
+  not claim the demo's single-bit DRAM rate is the in-flight ECC-on threat; it is the tractable stand-in.
+- **Unprotected death is only *demonstrated* at the band top (1e-7) — review item 9.** At the lower,
+  more representative calibrated rates (1e-8, and especially 1e-9, where modern deep-submicron flight
+  data actually sits) the **unprotected run survives the tested mission length**: too few upsets land
+  in 150–300 steps to guarantee a lethal bit-30 strike. The NEPP 1e-5…1e-7 figures are *design
+  criteria*, not observed modern-memory rates. So the "unprotected dies" headline is a band-top
+  demonstration; the value proposition at 1e-9/1e-8 is the *degradation and tail-risk* protection
+  buys, not certain-death-vs-survival on every mission.
+- **Injection surface and timing are narrow, by construction (review item 10).** Flips land on
+  **parameters and optimizer state only**, and only **between `optimizer.step()` and the next
+  forward** — the instant of maximum ABFT visibility (the trusted checksum is exactly one step old
+  there). Gradients, activations, and mid-kernel/in-flight-GEMM state are **never struck**, and the
+  AWS-paper "silent activation SDC" headline mechanism is therefore *not* what this demo injects.
+  These are the open questions a real **beam campaign** answers; the sim is honest about only covering
+  the memory-resident, between-steps surface.
+- **Oracle scope (review item 12).** The exact corruption-step oracle (rate-0 vs irradiated loss
+  divergence) requires **bit-exact determinism**, which the code relies on but does **not** enforce
+  via `torch.use_deterministic_algorithms(True)` — it holds on CPU and is semantic-only on MPS (item
+  5). The oracle also only sees a fault once it **moves the loss within the ~120-step horizon**, and
+  there is **no oracle after the first rollback** (the replayed trajectory is no longer the clean
+  reference). Recall/latency are measured under those limits, not universally.
+- **fp32-only (review item 14).** Every number here — the bit-30 catastrophe analysis, the ABFT
+  tolerances, the sensitivity floor — is **fp32**. bf16/fp16 differ *materially*: their exponent
+  layout changes which bit is lethal, and their ~1e-2 epsilon makes a fixed checksum threshold
+  hopeless (the variance-aware V-ABFT threshold is the roadmap, not shipped/validated here).
+- **SAA model idealization (review item 16).** The orbit model transits the SAA on an **identical
+  fixed phase every orbit**, which is geographically impossible — a real precessing ground track hits
+  the anomaly on only a *subset* of orbits, at varying depth. `track.py` discloses this; it is
+  repeated here because the idealization **flatters adaptive vigilance** (it makes "checkpoint before
+  every SAA entry" cleaner than reality, where entry timing wanders).
 - **M4b is done on an NVIDIA L4 24GB** (not A100/H100): real-scale overhead, precision/recall, and
   calibrated-rate wall-clock are all re-measured above and labelled *NVIDIA L4 24GB*; the MPS/CPU
   tables below are kept and labelled separately. `DcgmXidSource` (real ECC/Xid polling) is
@@ -303,9 +346,15 @@ occur in SAA transits (<20 min/orbit); Proba-II ~90%, a 1025 km satellite 97.3%;
 
 **Fault injection.** PyTorchFI (UIUC/NVIDIA) tensor-level approach, vendored/extended, not
 hard-depended; NVBitFI (SASS-level) cited as a future validation path; tensor-level injection is
-accepted for error-propagation studies (arXiv 2412.08466); NVIDIA beam vs simulation agree within
-5× ("Demystifying GPU Reliability", 2021). SEFIs: Jetson RADECS 2024 — reboot cross-section
-*exceeds* bit-error cross-section, so crashes matter as much as flips.
+accepted for error-propagation studies (arXiv 2412.08466). SEFIs: Jetson RADECS 2024 — reboot
+cross-section *exceeds* bit-error cross-section, so crashes matter as much as flips.
+
+> ⚠️ **Scope of the "within 5×" agreement (review item 15).** "Demystifying GPU Reliability" (2021)
+> found beam and simulation agree within ~5× — but that validation is for **SASS/instruction-level**
+> fault models (NVBitFI-style), **not** the tensor-level parameter injection this repo uses. It is
+> cited as evidence that *fault-injection simulation in general* tracks beam data, **not** as a claim
+> that this specific tensor-level injector is beam-validated. That validation is the NVBitFI/beam
+> roadmap item, not a property of what ships here.
 
 **Detection.** Real SDCs cause both loss spikes and silent convergence drift (AWS, "SDC in LLM
 training", arXiv 2502.12340). ABFT overhead precedents: FT-CNN 4–8%; V-ABFT ~12% with variance-

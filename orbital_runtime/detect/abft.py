@@ -177,8 +177,10 @@ class AbftTier:
 
         The differentiator (research doc SS3): "detection intensity and
         checkpoint cadence keyed to orbital position (crank ABFT sampling +
-        checkpoint immediately before SAA entry). Novel; nothing in
-        literature does position-aware protection scheduling."
+        checkpoint immediately before SAA entry)." The defensible novelty is
+        position-aware protection scheduling for general-purpose GPU *training*
+        runtimes -- radiation-aware instrument safing is decades-old spacecraft
+        practice; applying it to unmodified PyTorch training is what is new.
 
         The economics: ~90% of upsets arrive in ~10% of the orbit, so
         spending the verification budget uniformly wastes most of it. Paying
