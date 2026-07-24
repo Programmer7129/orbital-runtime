@@ -654,3 +654,87 @@ remains open; no reported number depends on them.
 - **The two citations (§4)** and **the ABFT-at-scale tolerance fix** — carried forward as M4c.
 
 **Stopping here per instructions.** Local suite green (262/1); committed as `M4b`.
+
+---
+
+## 2026-07-23 — Hardening (two hostile reviews): all 20 fix-list items closed — COMPLETE
+
+Worked `docs/reviews/FIX-LIST.md` (consolidated methodology + artifact reviews). Every fix is
+tagged **"found by hostile review, fixed"** in its commit. **Suite green: 270 passed / 2 skipped on
+macOS/MPS, ~32 s** (was 262/1; +8 regression tests). No CUDA reruns (GPU is gone); all regenerated
+metrics come from actual **CPU/MPS** reruns, never hand-edited.
+
+### Prior hardening commits (session 1) — items 1, 6, 7, 8, 13
+- **1** `detect_eval` scoring: TP requires first detection ≥ corruption step; clean-run FP rate as
+  the precision proxy (irradiated-cohort precision is vacuous); Clopper-Pearson 95% CIs on every
+  ratio; `detect-eval.json` regenerated. **6, 7** rollback-resume off-by-one (`ck.step+1`), counter
+  reconciliation, detector-before-save ordering, post-rollback ABFT re-anchoring. **8** raised
+  `LAG_UNLOCALISED` 25→80 to cover the measured 77-step guard latency. **13** checkpoint the
+  accelerator RNG state, not just CPU.
+
+### This session — items 2, 3, 4, 5, 9–12, 14–20 (+ item 8's disclosure half)
+
+**5 — byte-vs-semantic determinism, now verified, not asserted.** The "byte-identical
+telemetry_data.js" claim was false on MPS. Empirically settled: **two independent `--device cpu`
+demo runs hash to the SAME bundle sha256** (byte-exact), while **two MPS runs produce DIFFERENT
+sha256 but agree on every semantic field** (49 upsets/43 SAA, death @141, 8 detected → 8 rollbacks →
+111 replayed, event structure) — MPS float reductions drift the loss at the ULP. Finished the WIP
+wall-strip (`build.py` drops wall fields; `checkpoint_wall_s` added to `WALL_CLOCK_FIELDS`), reworded
+README + `run_demo.sh` to semantic-on-all-backends / byte-exact-CPU-only, and **regenerated the
+laptop demo numbers** from a fresh rerun (they moved 7/7/105/val 2.4288 → **8/8/111/val 2.4304** after
+the items 6 & 7 recovery fixes — regenerated, never carried). Regression test pins that a bundle is
+byte-identical across two logs differing only in wall-clock.
+
+**2 — degradation no longer hidden.** Added a **Final-val-loss column** to the calibrated-rate
+wall-clock table and disclosed the **1e-7 band-top survivor is DEGRADED** (val 4.038 vs ~2.56 at
+1e-9/1e-8) — the M3 sub-detection-floor mechanism, named.
+
+**3 — overhead honesty (design rule 4).** Rewrote `bench/protect_overhead_calibrated.py` with **≥5
+round-robin-interleaved repeats + an A/A control** (noise floor; effects below it reported `<noise`),
+a warmup round, medians, and per-row val loss; smoke-tested end-to-end on CPU (`--smoke`). Ready for
+the next GPU session. The committed L4 wall-clock numbers are **relabelled "single-seed, 2-repeat
+indicative."**
+
+**4 — ECC threat-model inversion, owned.** README limitation: the headline runs `ecc_off` (single-bit
+DRAM, the calibratable proxy), but flight is ECC-on, where the residual channels (MBU leakage /
+SRAM-logic / SEFI) — exactly the off-by-default, uncited ones — are what leak; beam validation is what
+calibrates those.
+
+**9–12, 14–16 — disclosures.** Band-edge (unprotected death only *demonstrated* at 1e-7; survives at
+1e-8/1e-9); narrow injection surface (params+optimizer only, between `optimizer.step()` and the next
+forward; grads/activations/mid-kernel never struck); novelty narrowed to "position-aware protection
+scheduling for general-purpose GPU **training** runtimes" (README + `abft.py` + `policy.py`); oracle
+scope (needs bit-exact determinism, not enforced; ≤120-step horizon; none post-first-rollback);
+fp32-only; NVIDIA "within 5×" beam agreement scoped to SASS-level models (not this tensor-level
+injector); SAA fixed-phase idealization flatters adaptive vigilance.
+
+**17 — dead code.** Removed the duplicated ABFT tolerance formula: `_queue_check` now calls the single
+`_tolerance()` source of truth (behaviourally identical; 32 abft tests green).
+
+**18, 19, 20 — provenance/trivia.** Labelled block_size=256 (wall-clock) vs 64 (detection/precision)
+in the L4 tables; **`overhead.py`/`detect_eval.py` now record model size + config + torch version
+inside every JSON**; `make bench` regenerates the committed filenames with exact flags (portable CPU
++ deterministic detect-eval; MPS/large/L4 invocations recorded as comments — incl. that the old 10.7M
+run's dims were never recorded, the gap this closes); reconciled the 263-vs-262 test count to 270/2;
+confirmed no L4 measurement is labelled HBM. `overhead-cpu.json` + `detect-eval.json` regenerated to
+carry the new metadata (detect-eval scoring byte-identical; CPU overhead +7.2%/+15.0% → +4.7%/+13.1%,
+same verdict, from a fresh, quieter run).
+
+**8 (disclosure half).** The ~40-step post-rollback guard-warmup blindness (only `isfinite` live
+during warmup) + the 77-step measured guard latency / best-effort fallback are now a README honesty
+flag, not just a code comment.
+
+### Disclosed, NOT fixed (carried forward, honestly)
+- **ABFT false-positives at real scale** — 3/6 clean 85.3M runs trip `abft_mismatch` (catastrophic
+  cancellation over the wide reduction). Recall unaffected; the fix (running-error / L1 V-ABFT bound)
+  needs cross-scale re-validation of the 32 ABFT tests + the M2 sensitivity-floor claims — a
+  sub-project. **Top M4c item.**
+- **The frozen L4 dashboard bundle + real-scale counts predate the items 6 & 7 recovery fixes** and
+  cannot be regenerated without a GPU. The semantic story is unchanged; exact rollback/replay counts
+  will shift on a GPU rerun — labelled M4b-as-measured, not presented as current-code output.
+- **The two uncited constants** (`DEFAULT_ECC_LEAK_FRACTION`, SEFI `p_per_transit`) remain OFF and
+  untouched; no reported number depends on them.
+- **The controlled `protect_overhead_calibrated` rerun** and **the demo video** await the next GPU
+  session / the orchestrator.
+
+**Stopping here per instructions.** Suite green (270 passed / 2 skipped, macOS/MPS).

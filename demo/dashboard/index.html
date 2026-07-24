@@ -653,8 +653,9 @@
   function updateFooter(t) {
     // Wall-clock is nondeterministic and is stripped from freshly-built bundles
     // (it is not a byte-reproducible artifact); it survives only in the frozen
-    // real-GPU bundle. Show it when present, otherwise say so rather than "0s".
-    el("f-wall").textContent = S.protected_wall_s != null ? S.protected_wall_s.toFixed(1) + "s" : "not fixed";
+    // real-GPU bundle. Show it when present, otherwise label it stripped
+    // (not "0s", which would read as a measurement, and not "not fixed").
+    el("f-wall").textContent = S.protected_wall_s != null ? S.protected_wall_s.toFixed(1) + "s" : "n/a (nondeterministic — stripped)";
     el("f-pval").textContent = S.protected_val != null ? S.protected_val.toFixed(4) : "—";
     el("f-bval").textContent = S.baseline_val != null ? S.baseline_val.toFixed(4) : "—";
     // The deterministic recovery story (rollbacks, replayed steps) is the
