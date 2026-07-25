@@ -738,3 +738,82 @@ flag, not just a code comment.
   session / the orchestrator.
 
 **Stopping here per instructions.** Suite green (270 passed / 2 skipped, macOS/MPS).
+
+---
+
+## 2026-07-25 — M4c: physics upgrade (SEFI + MBU + ECC redistribution + V-ABFT) — COMPLETE
+
+Finished the M4c items from `docs/research/beam-calibration-audit.md`. SEFI-on and MBU clustering
+were already landed (commits 119f183, e6f999d); this session audited the WIP redistribution
+checkpoint, completed items (3)–(5), and re-validated. **Suite green: 287 passed / 3 skipped on
+macOS/MPS, ~40 s** (was 280/3; +7 tests).
+
+### Audit of the WIP checkpoint (2cf389e) — KEPT in full, it was correct
+
+The partial injector/sefi/flux changes were sound and are the item-(3) implementation:
+- `flux.py`: `DEFAULT_ECC_LEAK_FRACTION=0.02` (uncited) retired for `ECC_MBU_SHARE=0.315`
+  (MICRO'21), plus `ECC_DUE_SHARE`/`ECC_SDC_SHARE` from NSREC'21's 2.3× DUE:SDC midpoint.
+- `injector.py`: `advance()` now advances the upset cursor **before** firing (a DUE raises, and a
+  stale cursor would re-fire it on every replay — an infinite loop; same discipline as the SEFI
+  loop). `_fire_upset` splits each leaked event DUE-vs-SDC under `ecc_on`; `_fire_due` emits a fatal
+  Xid and raises `SefiCrash(due)`. The `ecc_off` path is provably untouched: the DUE check
+  short-circuits on `self.xid.ecc_on` (Python `and`), so it draws **no** `_rng_xid` and the headline
+  demo's flip schedule is unchanged. Verified by A/B below.
+
+### (3) ECC as SDC→DUE redistribution — DONE + tested
+
+`--ecc on` scales the event rate to the MICRO'21 MBU share (only multi-bit defeats SEC-DED) and
+splits each leaked event: ~0.22 of all events → DUE (detected-uncorrectable crash, process-restart
+recovery, same path as a SEFI), ~0.095 → miscorrected silent SDC (injected). Net SDC suppressed
+~10× vs `ecc_off`, inside NSREC'21's "up to 21×". The SDC path forces `multi_bit=False` so a silent
+SDC never surfaces as a fatal Xid (a fatal Xid is a *detected* error; an SDC is by definition not).
+New `tests/test_inject_ecc.py` (5 tests) drives the environment and pins: the DUE-dominant split
+(~2.3:1), DUE=`SefiCrash(due)`, SDC-is-silent, and the `ecc_off` no-DUE/silent-driver invariant.
+`test_flux.py` (+3) pins the cited constants and their tie to `inject.memory.MBU_SHARE`. The
+uncited `DEFAULT_ECC_LEAK_FRACTION` placeholder is retired; the **conditions caveat**
+(neutron/HBM2 MICRO'21 + one GPU's ECC scheme NSREC'21, mapped onto a dtype-generic fp32 injector)
+is kept as an explicit honesty flag, not a missing citation.
+
+### (4) V-ABFT running-error / L1 tolerance — 768-dim clean FPs 3/6 → 0/6, recall preserved
+
+**Root cause reproduced** on MPS at 768-dim: 3/6 clean runs tripped `abft_mismatch` (seeds 2,3,4),
+all on `mlp.c_proj` (K=3072), `|value|`-scaled ratio up to **7.86**. The tolerance keyed to the
+post-reduction `|value|`, but the wide reduction **cancels 3–4 orders of magnitude**, so true fp32
+rounding noise exceeded it. **Fix** (`detect/abft.py`): key the tolerance to `max(L1(lhs), L1(rhs))`
+— the running-error / variance-aware V-ABFT bound — which equals `|value|` when terms share a sign
+and stays large under cancellation, so one safety factor holds at every width. Now per-row (not a
+global max) so a large-scale row can't mask a small-scale row's fault; still one host sync/step.
+
+- **768-dim MPS re-measure** (`bench/results/detect-eval-mps-768.json`, 6 seeds, 1e-7): clean FPs
+  **3/6 → 0/6**, recall **1.00** across tiers, `abft_mismatch` first in 4/6. Same L1 ratio on the
+  tripping checks: **0.0009** (~1000× below threshold).
+- **32 ABFT unit tests pass unchanged**, including the M2 sensitivity floor (bit ≥15 caught, bit ≤12
+  missed) — the L1 loosening is exactly absorbed by the residual headroom at the tiny scale. New
+  white-box regression test pins the L1 scale so a refactor back to `|value|` fails loudly.
+- **A/B isolation**: reverting only `abft.py` to HEAD and rerunning the tiny CPU detect_eval gives
+  **bit-identical** results → my change is neutral where there's no cancellation. The tiny-scale
+  latency shift (abft median 2→6) and guards recall 0.83→1.00 seen in the regenerated JSON are from
+  the **MBU commit** (e6f999d), not the L1 change.
+
+### Regenerated results JSONs (tool output, never hand-edited)
+
+- `detect-eval.json` (tiny, CPU, deterministic): recall 1.00, clean FP 0/12 — refreshed under
+  current physics (the committed copy predated the MBU commit).
+- `detect-eval-mps-768.json` (**new**): the at-scale FP-fix artifact above.
+- L4 JSONs untouched (GPU-only; cannot regenerate here).
+
+### (5) Docs — README + this entry
+
+README: new **Radiation-channels** section (SEFI/MBU/ECC with citations); honesty flags revised —
+ABFT-at-scale FP now **FIXED**, the two placeholders now **cited** (conditions caveat retained),
+added the **TID/aging out-of-scope** gap; kept the SAA idealization and fp32-only disclosures; test
+counts and MICRO'21/NSREC'21/Suncatcher citations added.
+
+### Disclosed, NOT fixed (carried forward, honestly)
+- **Conditions caveat on the ECC/MBU/SEFI anchors** — cited but neutron/HBM2 & single-GPU-scheme,
+  mapped onto fp32; beam validation would calibrate the exact share/split per part.
+- **No TID / aging term** — rate-only simulator; cumulative-dose degradation out of scope (disclosed).
+- **SAA fixed-phase idealization** and **fp32-only** — unchanged M4b disclosures.
+- **The frozen L4 dashboard bundle / demo video** — await the next GPU session / the orchestrator.
+
+**Stopping here per instructions.** Suite green (287 passed / 3 skipped, macOS/MPS).
