@@ -1,0 +1,276 @@
+<style>
+  :root {
+    --font-serif: Charter, "Bitstream Charter", "Sitka Text", Cambria, "Palatino Linotype", Georgia, serif;
+    --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+    --ground: #f2f4f7;
+    --surface: #ffffff;
+    --ink: #14181f;
+    --ink-soft: #454d59;
+    --ink-faint: #727b87;
+    --rule: #d6dbe2;
+    --rule-soft: #e6eaef;
+    --accent: #9c580c;
+    --accent-bg: #f6ecdd;
+    --fault: #b23a34;
+    --nominal: #1f7a52;
+    --shadow: 0 1px 2px rgba(20,24,31,.06), 0 8px 28px rgba(20,24,31,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0b0e13;
+      --surface: #12161d;
+      --ink: #dce2ea;
+      --ink-soft: #9aa4b1;
+      --ink-faint: #6b7683;
+      --rule: #242b34;
+      --rule-soft: #1a2029;
+      --accent: #e6a24b;
+      --accent-bg: #1e1a12;
+      --fault: #e0655c;
+      --nominal: #4fbd8a;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 34px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #f2f4f7; --surface: #ffffff; --ink: #14181f; --ink-soft: #454d59;
+    --ink-faint: #727b87; --rule: #d6dbe2; --rule-soft: #e6eaef; --accent: #9c580c;
+    --accent-bg: #f6ecdd; --fault: #b23a34; --nominal: #1f7a52;
+    --shadow: 0 1px 2px rgba(20,24,31,.06), 0 8px 28px rgba(20,24,31,.05);
+  }
+  :root[data-theme="dark"] {
+    --ground: #0b0e13; --surface: #12161d; --ink: #dce2ea; --ink-soft: #9aa4b1;
+    --ink-faint: #6b7683; --rule: #242b34; --rule-soft: #1a2029; --accent: #e6a24b;
+    --accent-bg: #1e1a12; --fault: #e0655c; --nominal: #4fbd8a;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 34px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: clamp(2.2rem, 5vw, 5rem) clamp(1.2rem, 5vw, 2rem) 5rem;
+  }
+  .fade { opacity: 0; transform: translateY(8px); animation: rise .6s cubic-bezier(.2,.7,.3,1) forwards; }
+  .fade:nth-child(2) { animation-delay: .05s; }
+  .fade:nth-child(3) { animation-delay: .1s; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .fade { animation: none; opacity: 1; transform: none; }
+    .caret { animation: none; }
+  }
+
+  /* Masthead */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: .72rem;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 1.1rem;
+  }
+  h1 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: clamp(1.9rem, 4.6vw, 2.9rem);
+    line-height: 1.12;
+    letter-spacing: -.01em;
+    text-wrap: balance;
+    margin: 0 0 1rem;
+  }
+  .standfirst {
+    font-size: clamp(1.05rem, 2.2vw, 1.22rem);
+    color: var(--ink-soft);
+    max-width: 60ch;
+    margin: 0 0 2rem;
+  }
+  .standfirst b { color: var(--ink); font-weight: 600; }
+
+  /* Telemetry readout — the signature moment */
+  .readout {
+    font-family: var(--font-mono);
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    padding: 1.1rem 1.2rem;
+    margin: 0 0 1rem;
+    overflow-x: auto;
+    font-size: .84rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .readout .row { display: flex; align-items: baseline; gap: .8rem; white-space: nowrap; padding: .18rem 0; }
+  .readout .lbl { width: 8.5rem; color: var(--ink-faint); letter-spacing: .04em; flex: none; }
+  .readout .dots { flex: 1 1 auto; border-bottom: 1px dotted var(--rule); transform: translateY(-.28em); min-width: 1.5rem; }
+  .readout .val { color: var(--ink-soft); flex: none; }
+  .readout .fault { color: var(--fault); font-weight: 600; }
+  .readout .ok { color: var(--nominal); font-weight: 600; }
+  .caret { display: inline-block; width: .5em; height: 1em; background: var(--accent); transform: translateY(.12em); margin-left: .1em; animation: blink 1.1s steps(2) infinite; }
+  @keyframes blink { 0%,50% { opacity: 1; } 50.01%,100% { opacity: 0; } }
+  .caption { font-family: var(--font-mono); font-size: .72rem; color: var(--ink-faint); letter-spacing: .02em; margin: 0 0 2.6rem; }
+
+  .hr { height: 1px; background: var(--rule); border: 0; margin: 2.6rem 0; }
+
+  /* Sections */
+  section { margin: 2.6rem 0; }
+  .label {
+    font-family: var(--font-mono);
+    font-size: .7rem;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: block;
+    margin: 0 0 .7rem;
+  }
+  h2 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: clamp(1.3rem, 3vw, 1.6rem);
+    line-height: 1.2;
+    letter-spacing: -.005em;
+    text-wrap: balance;
+    margin: 0 0 .9rem;
+  }
+  p { margin: 0 0 1rem; max-width: 66ch; }
+  p, li { color: var(--ink); }
+  .lede { color: var(--ink-soft); }
+  strong { font-weight: 600; }
+  .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; font-size: .93em; color: var(--ink); }
+  .term { font-family: var(--font-mono); font-size: .9em; color: var(--ink-soft); }
+  ul { margin: 0 0 1rem; padding: 0; list-style: none; max-width: 66ch; }
+  li { position: relative; padding-left: 1.3rem; margin: 0 0 .7rem; }
+  li::before { content: "—"; position: absolute; left: 0; color: var(--accent); }
+  li b { font-weight: 600; }
+
+  /* Results table */
+  .tablewrap { overflow-x: auto; margin: 1.2rem 0; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+  th, td { text-align: left; padding: .7rem .9rem; border-bottom: 1px solid var(--rule-soft); white-space: nowrap; }
+  thead th { font-family: var(--font-mono); font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); font-weight: 500; }
+  tbody td { font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+  tbody td:first-child { color: var(--ink); }
+  td .mono { font-family: var(--font-mono); }
+  tr:last-child td { border-bottom: 0; }
+  .cell-fault { color: var(--fault); font-family: var(--font-mono); font-weight: 600; }
+  .cell-ok { color: var(--nominal); font-family: var(--font-mono); font-weight: 600; }
+
+  .note { border-left: 2px solid var(--accent); padding: .1rem 0 .1rem 1.1rem; margin: 1.4rem 0; color: var(--ink-soft); font-size: .96rem; max-width: 64ch; }
+
+  /* Footer */
+  footer { margin-top: 3.4rem; padding-top: 1.6rem; border-top: 1px solid var(--rule); }
+  .cta { font-family: var(--font-mono); font-size: .9rem; color: var(--ink); background: var(--accent-bg); border: 1px solid var(--rule); border-radius: 8px; padding: 1rem 1.1rem; margin: 0 0 1.4rem; }
+  .cta b { color: var(--accent); }
+  .refs { font-family: var(--font-mono); font-size: .72rem; line-height: 1.7; color: var(--ink-faint); letter-spacing: .01em; }
+  a { color: var(--accent); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow fade">Technical thesis · nothing simplified</p>
+    <h1 class="fade">Radiation corrupts computation in orbit. No one protects the workload.</h1>
+    <p class="standfirst fade">Commercial GPUs are moving to orbit at scale. Cosmic radiation flips bits <b>inside the GPU while it computes</b> — not in transmission — and no vendor-neutral software layer keeps a COTS GPU <b>job</b> alive through it. We build that layer, calibrated to flight-data upset rates and validated on datacenter silicon.</p>
+
+    <div class="readout fade" role="img" aria-label="Result: unprotected run fails with NaN at step 179; protected run completes 300 of 300 at plus 1.6 percent overhead.">
+      <div class="row"><span class="lbl">ENVIRONMENT</span><span class="dots"></span><span class="val">1e-7 upsets/bit-day · calibrated · no elevation</span></div>
+      <div class="row"><span class="lbl">UNPROTECTED</span><span class="dots"></span><span class="fault">NaN @ step 179 &nbsp;✕ FAILED</span></div>
+      <div class="row"><span class="lbl">PROTECTED</span><span class="dots"></span><span class="ok">300 / 300 · 326 upsets absorbed &nbsp;✓ SURVIVED</span></div>
+      <div class="row"><span class="lbl">OVERHEAD</span><span class="dots"></span><span class="val">+1.6% detection · adaptive<span class="caret" aria-hidden="true"></span></span></div>
+    </div>
+    <p class="caption">NVIDIA L4 24 GB · CUDA · 85.3 M-param training run · identical seeded bombardment</p>
+  </header>
+
+  <hr class="hr">
+
+  <section>
+    <span class="label">The problem</span>
+    <h2>Computation, not communication</h2>
+    <p>Optical and RF downlinks are a solved, error-corrected problem — NASA's TBIRD moved <span class="num">4.8 TB</span> error-free through the atmosphere at <span class="num">200 Gbps</span>. The unsolved problem is bits corrupted <em>inside the GPU as it computes</em>: single-event upsets, multi-bit upsets, functional interrupts (device crash/hang), and cumulative-dose degradation. ECC catches some single-bit memory flips. Nothing protects the training or inference job itself — corrupted weights, poisoned optimizer state, silent divergence, or a hung device.</p>
+  </section>
+
+  <section>
+    <span class="label">Mechanism</span>
+    <h2>Worse than intuition suggests</h2>
+    <ul>
+      <li><b>Format-level lethality.</b> In fp32, for typical weights (|v|&lt;1), flipping most exponent bits drives the value toward zero — harmless. Flipping <span class="term">bit 30</span> multiplies by ~<span class="num">2¹²⁸</span> → NaN cascade. Roughly <b>1 in 32 bits is lethal</b>; a run absorbs ~100 upsets, then dies of one. Derived, not assumed — uniform-random injection; IEEE-754 decides which bit kills.</li>
+      <li><b>Silent corruption, not just crashes.</b> Most failures announce themselves (NaN); a fraction finish with a <b>measurably worse model and zero alarms</b> — the case no downlink protocol or crash-monitor catches.</li>
+      <li><b>ECC shifts the threat, doesn't remove it.</b> On ECC-protected GPUs the crash rate <em>exceeds</em> the silent-corruption rate by <span class="num">2.2–2.7×</span> [NSREC'21]; <span class="num">31.5%</span> of HBM upsets are multi-bit and can evade single-bit ECC [MICRO'21]. The deployable (ECC-on) regime is dominated by the channels with no published rates for modern accelerators.</li>
+      <li><b>It grows on two curves.</b> Each transistor shrink lowers critical charge → more upsets: H100 memory MTBE is <span class="num">3.2×</span> worse than A100 [NCSA, SC25]. Unit count in orbit rises yearly. Fragility × deployment, both monotonic.</li>
+    </ul>
+  </section>
+
+  <section>
+    <span class="label">Why now</span>
+    <h2>The rad-hard alternative is a non-starter for AI</h2>
+    <p>First datacenter-class GPU in orbit: Starcloud-1 (NVIDIA H100), Nov 2025. Google Project Suncatcher (TPU clusters, ~2027). A SpaceX orbital-AI constellation filing. The rad-hardened path everyone is escaping: the RAD750 (Perseverance rover, ~<span class="num">$200k</span>/unit) is ~1998-class compute — about <span class="num">10⁶×</span> slower than an H100. Every operator flies commercial silicon and inherits the radiation problem. Rad-hardening costs a million-fold compute penalty; our runtime costs <span class="num">~2%</span>.</p>
+  </section>
+
+  <section>
+    <span class="label">What we built</span>
+    <h2>Inject → detect → recover, and measured</h2>
+    <p class="lede">Device-agnostic (CPU/MPS/CUDA), deterministic: protected and unprotected runs face a bit-identical bombardment, so the comparison is a controlled experiment.</p>
+    <ul>
+      <li><b>Calibrated injector.</b> Time-varying Poisson process over resident bits, band <span class="num">1e-9…1e-7</span> upsets/bit-day (NASA NEPP / CREME96 / flight-data anchored); the South Atlantic Anomaly modeled as a phase-gated multiplier normalized to redistribute — not manufacture — daily upsets, reproducing the <span class="num">80–97%</span> SAA share seen in flight; MBU clustering [MICRO'21]; SEFI calibrated to Suncatcher's measured <span class="num">2×10⁻¹¹ cm²/chip</span>.</li>
+      <li><b>Three-tier detection.</b> Near-free guards (NaN / grad-norm / loss-spike); sampled ABFT checksums on GEMMs (Huang–Abraham lineage), sampling keyed to orbital position; an ECC/Xid watcher on real hardware counters.</li>
+      <li><b>Orbit-aware recovery.</b> Asynchronous checkpoints cadenced to save <em>before</em> SAA entry; detect → restore → replay.</li>
+    </ul>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Run</th><th>Radiation</th><th>Outcome</th><th>Final val loss</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>clean baseline</td><td class="mono">none</td><td class="mono">completed 300/300</td><td>2.516</td></tr>
+          <tr><td>unprotected</td><td class="mono">1e-7 /bit-day</td><td class="cell-fault">DIED (NaN) @ 179</td><td>∞</td></tr>
+          <tr><td>protected</td><td class="mono">1e-7 /bit-day</td><td class="cell-ok">COMPLETED 300/300</td><td>2.628</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Detection precision/recall measured against an exact determinism-based oracle; <span class="num">0/12</span> false positives on clean runs after variance-aware ABFT tolerance. <span class="num">288</span> tests. Every physics constant cites a source in-repo.</p>
+  </section>
+
+  <section>
+    <span class="label">The honest edge</span>
+    <h2>Disclosed limitations</h2>
+    <p>The ECC-off single-bit regime is the calibratable proxy; the ECC-on residual channels (MBU-leak / SRAM-logic / SEFI) carry conditions caveats from neutron/HBM2 source data. No TID/aging term (out of scope for a rate model). The SAA is modeled as a fixed-phase transit per orbit (idealized). Headline numbers are fp32; bf16/fp16 differ. Two adversarial reviews — methodology and artifact-evaluation — were run against this work; findings are fixed or disclosed, both in-repo.</p>
+  </section>
+
+  <section>
+    <span class="label">The open experiment</span>
+    <h2>The data no competitor can shortcut</h2>
+    <p>No published campaign irradiates a device <em>during training</em> and reports application-level outcome distributions — verified unclaimed against the single-event-effects literature (inference-under-beam exists; training does not). A proton campaign at the Crocker 67 MeV beamline — where Google qualified its TPUs — with a Jetson-class device would measure the beam-vs-simulation agreement factor for tensor-level fault models of AI <em>training</em>, and calibrate the ECC-on residual channels our model currently carries as literature-anchored assumptions.</p>
+    <div class="note">Beam validation requires scarce beam time, radiation-effects expertise, and it <b>expires each chip generation</b> — a recurring moat, not a one-time hurdle.</div>
+  </section>
+
+  <section>
+    <span class="label">Defensibility</span>
+    <h2>Why not just NVIDIA</h2>
+    <p>NVIDIA ships primitives (cuda-checkpoint), not vertical reliability products — and never built the fault-tolerant-training layer even for the vastly larger terrestrial market (that came from ByteDance, Meta, Google, academia). Data Center revenue is <span class="num">$75.2B</span>/quarter [Q1 FY27]; orbital GPU volume through 2029 does not move that number. Their own documentation states products are "not designed, authorized, or warranted to be suitable for use in… <b>space</b>… equipment." When NVIDIA decides an ecosystem layer matters, they buy the leader — Mellanox, Bright Computing, Run:ai (~<span class="num">$700M</span>, 2024). The plan is to be that leader, holding cross-chip beam data, fleet telemetry, and flight heritage.</p>
+  </section>
+
+  <section>
+    <span class="label">Position</span>
+    <h2>A narrow wedge into a large room</h2>
+    <p>Resilience is a privileged wedge: it sits beneath every workload on every node and sees every fault — the position from which observability and security platforms expanded from a single feature. The surface ahead: fleet observability, health-aware scheduling, an assurance/insurance data business, cross-environment reach (LEO → cislunar → terrestrial edge/HPC), and a per-chip-generation re-characterization subscription.</p>
+  </section>
+
+  <footer>
+    <div class="cta">
+      <b>Demo</b> — one command, ~20 s, reproducible: an unmodified training run dies from injected flight-rate radiation; the protected run survives. Repository and adversarial reviews available on request.<br><br>
+      <b>Contact</b> — Vedant Patel · vedantspatel33@gmail.com
+    </div>
+    <p class="refs">Sources: NASA NEPP / CREME96 · NASA TBIRD · Google Project Suncatcher (arXiv:2511.19468) · HBM2 soft errors, MICRO'21 (10.1145/3466752.3480111) · GPU DUE, NSREC'21 (arXiv:2108.00554) · "Story of Two GPUs," SC25 (arXiv:2503.11901) · Huang &amp; Abraham 1984 · NVIDIA product documentation, SLA, and Q1 FY2027 results. Full citations in repository research docs.</p>
+  </footer>
+
+</div>
