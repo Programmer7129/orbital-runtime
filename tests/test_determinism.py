@@ -103,18 +103,28 @@ def test_flip_schedule_is_independent_of_protection(tiny_workload):
 
 
 def test_enabling_sefi_does_not_move_the_flips(tiny_workload):
-    """Named streams: the SEFI draw must not consume the memory stream."""
-    w1 = tiny_workload(seed=31)
-    a = make_env(w1, rate=2e-4, seed=31, steps=60)
-    r1 = train(w1, cfg=TrainConfig(steps=60), env=a)
+    """Named streams: the SEFI draw must not consume the memory stream.
 
-    w2 = tiny_workload(seed=31)
-    b = make_env(
-        w2, rate=2e-4, seed=31, steps=60, sefi=SefiInjector(OrbitTrack(), p_per_transit=0.0)
+    Compared at the SCHEDULE level (env.upsets), not the loss level: a fired
+    SEFI legitimately diverges the losses (it crashes the run), but the
+    MEMORY-flip schedule -- times, SAA membership -- must be bit-identical
+    whether SEFI fires often (p=0.9), never (p=0.0), or at the calibrated
+    default. If enabling SEFI moved the flips, the STREAM_SEFI draw would be
+    stealing from STREAM_MEMORY.
+    """
+    w = tiny_workload(seed=31)
+    on = make_env(
+        w, rate=2e-4, seed=31, steps=60, sefi=SefiInjector(OrbitTrack(), p_per_transit=0.9)
     )
-    r2 = train(w2, cfg=TrainConfig(steps=60), env=b)
+    off = make_env(
+        tiny_workload(seed=31), rate=2e-4, seed=31, steps=60,
+        sefi=SefiInjector(OrbitTrack(), p_per_transit=0.0),
+    )
+    default = make_env(tiny_workload(seed=31), rate=2e-4, seed=31, steps=60)  # calibrated
 
-    assert r1.losses == r2.losses
+    assert [e.t for e in on.upsets] == [e.t for e in off.upsets]
+    assert [e.t for e in on.upsets] == [e.t for e in default.upsets]
+    assert [e.in_saa for e in on.upsets] == [e.in_saa for e in off.upsets]
 
 
 def test_different_seeds_produce_different_runs(tiny_workload):

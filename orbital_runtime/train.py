@@ -20,6 +20,7 @@ from typing import Any
 import torch
 
 from .ckpt.recover import RecoveryExhausted
+from .detect.verdict import REASON_SEFI, TIER_WATCHER, Verdict
 from .inject.injector import RadiationEnvironment
 from .inject.sefi import SefiCrash
 from .telemetry import EVENT_RUN_END, EVENT_RUN_START, EVENT_STEP, Telemetry
@@ -168,7 +169,31 @@ def train(
             # the PREVIOUS step's optimizer.step() predate this radiation, so
             # a flip landing here is compared against pre-flip truth.
             if env is not None:
-                env.advance(step)  # may raise SefiCrash
+                try:
+                    env.advance(step)  # may raise SefiCrash
+                except SefiCrash as e:
+                    # A SEFI (or ECC-on DUE) is a functional interrupt: the
+                    # process fell over. Unprotected, that is death (handled by
+                    # the outer except). Protected, the recovery contract is a
+                    # PROCESS RESTART + resume from the last verified checkpoint
+                    # -- the crash corrupted no saved state, so the newest
+                    # checkpoint is clean. Route it through the same rollback
+                    # path as a detection so replay cost is counted honestly.
+                    if recovery is None:
+                        raise
+                    verdict = Verdict(
+                        True,
+                        step,
+                        TIER_WATCHER,
+                        REASON_SEFI,
+                        {"flavour": e.flavour, "t_sim": e.t_sim, "orbit": e.orbit},
+                    )
+                    if telemetry:
+                        telemetry.emit(
+                            EVENT_STEP, step=step, t_sim=e.t_sim, sefi=True, recovered=True
+                        )
+                    step = recovery.on_detection(step=step, verdict=verdict)
+                    continue  # process-restarted from the checkpoint; replay
 
             # --- M2: tell the tiers where we are, and arm them ---
             if detector is not None:

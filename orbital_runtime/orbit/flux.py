@@ -255,6 +255,17 @@ class FluxModel:
         per_orbit = self.expected_upsets(0.0, self.track.period_s)
         return per_orbit * (SECONDS_PER_DAY / self.track.period_s)
 
+    def expected_upsets_in_saa_per_orbit(self) -> float:
+        """Expected upsets inside the one SAA transit of a single orbit.
+
+        The SEFI channel is calibrated against this (see
+        `inject/sefi.py::SefiInjector.from_flux`): a SEFI cross-section is
+        measured against the same SAA proton environment that drives these
+        upsets, so the per-transit SEFI probability scales with the number of
+        upset (SDC-class) events the transit delivers.
+        """
+        return self.expected_upsets(0.0, self.track.period_s) * self.saa_share()
+
     def saa_share(self) -> float:
         """Fraction of expected upsets that arrive inside SAA transits.
 

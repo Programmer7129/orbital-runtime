@@ -27,10 +27,11 @@ from orbital_runtime.detect.verdict import (
 )
 from orbital_runtime.inject.injector import RadiationEnvironment
 from orbital_runtime.inject.memory import MemoryInjector
+from orbital_runtime.inject.sefi import SefiInjector
 from orbital_runtime.orbit.flux import FluxModel
 from orbital_runtime.orbit.track import OrbitTrack
 from orbital_runtime.rng import STREAM_ABFT, stream
-from orbital_runtime.train import TrainConfig, train
+from orbital_runtime.train import DEATH_SEFI, TrainConfig, train
 
 RATE = 5e-4
 
@@ -162,6 +163,73 @@ def test_replay_costs_orbit_time(tiny_workload, tmp_path):
     assert env.executed > 120
     assert env.now > env.duration_s  # flew past the nominal mission
     assert env.stats.flips > env.scheduled_within_mission
+
+
+# --------------------------------------------------------------------- #
+# SEFI recovery (M4c): a process crash is survived by process-restart from
+# the last verified checkpoint
+# --------------------------------------------------------------------- #
+
+
+def _sefi_env(w, *, seed: int, steps: int, p_transit: float, rate=0.0):
+    """A radiation environment whose ONLY fault channel is a forced SEFI.
+
+    rate=0 keeps memory upsets out of the way so the test isolates the SEFI
+    crash + recovery path; p_transit=1 makes a crash certain each transit.
+    """
+    bits = MemoryInjector(w.model, w.optimizer).static_resident_bits()
+    flux = FluxModel(bits_resident=bits, track=OrbitTrack(), base_rate_upsets_per_bit_day=rate)
+    return RadiationEnvironment(
+        w.model,
+        w.optimizer,
+        flux=flux,
+        seed=seed,
+        n_steps=steps,
+        orbits=2.0,
+        sefi=SefiInjector(flux.track, p_per_transit=p_transit),
+    )
+
+
+def test_unprotected_run_dies_of_a_sefi(tiny_workload):
+    """The crash channel really does kill an unprotected run."""
+    w = tiny_workload(seed=1)
+    env = _sefi_env(w, seed=1, steps=120, p_transit=1.0)
+    off = train(w, cfg=TrainConfig(steps=120), env=env)
+    assert off.died
+    assert off.death_reason == DEATH_SEFI
+
+
+def test_protected_run_survives_a_sefi_by_process_restart(tiny_workload, tmp_path):
+    """M4c: the recovery contract for a SEFI is restart-from-checkpoint.
+
+    Same forced-crash schedule as the unprotected run above; the only
+    difference is protection. The protected run must catch the SefiCrash,
+    resume from the last verified checkpoint, and complete.
+    """
+    w = tiny_workload(seed=1)
+    env = _sefi_env(w, seed=1, steps=120, p_transit=1.0)
+
+    abft = AbftTier(
+        w.model, base_sample_rate=0.1, saa_sample_rate=1.0, adaptive=True,
+        rng=stream(1, STREAM_ABFT),
+    ).attach()
+    detector = Detector(guards=GuardTier(), abft=abft)
+    recovery = RecoveryOrchestrator(
+        saver=CheckpointSaver(
+            w.model, w.optimizer, directory=tmp_path / "sefi", use_async=False
+        ),
+        policy=CheckpointPolicy(track=OrbitTrack(), base_interval=25, saa_interval=8),
+        env=env,
+        detector=detector,
+    )
+
+    on = train(
+        w, cfg=TrainConfig(steps=120), env=env, detector=detector, recovery=recovery
+    )
+    assert on.completed, f"protected run died on a SEFI ({on.death_reason})"
+    assert on.steps_completed == 120
+    assert recovery.stats.rollbacks > 0  # it really did have to recover
+    assert math.isfinite(on.final_loss)
 
 
 # --------------------------------------------------------------------- #

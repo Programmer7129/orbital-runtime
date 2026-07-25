@@ -61,8 +61,10 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument(
         "--sefi-prob",
         type=float,
-        default=0.0,
-        help="per-SAA-transit SEFI probability (uncalibrated; default off)",
+        default=None,
+        help="per-SAA-transit SEFI probability. Default: calibrated from the "
+        "flux model against Suncatcher's SEFI cross-section (SEFI on by "
+        "default). Pass 0 to disable, or a value in [0,1] to override.",
     )
     g.add_argument(
         "--inject-activations",
@@ -144,6 +146,12 @@ def main(argv: list[str] | None = None) -> int:
             storm_enabled=args.storm,
             mode=args.ecc,
         )
+        # SEFI on by default (calibrated); an explicit --sefi-prob overrides.
+        sefi = (
+            SefiInjector.from_flux(flux)
+            if args.sefi_prob is None
+            else SefiInjector(flux.track, p_per_transit=args.sefi_prob)
+        )
         env = RadiationEnvironment(
             workload.model,
             workload.optimizer,
@@ -152,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
             n_steps=args.steps,
             orbits=args.orbits,
             telemetry=telemetry,
-            sefi=SefiInjector(flux.track, p_per_transit=args.sefi_prob),
+            sefi=sefi,
             xid=XidSimulator(ecc_on=(args.ecc == MODE_ECC_ON)),
             inject_activations=args.inject_activations,
             activation_share=args.activation_share,

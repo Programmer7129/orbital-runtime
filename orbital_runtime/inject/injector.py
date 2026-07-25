@@ -135,7 +135,11 @@ class RadiationEnvironment:
 
         self.memory = MemoryInjector(model, optimizer)
         self.compute = ComputeInjector(model) if inject_activations else None
-        self.sefi = sefi or SefiInjector(flux.track)
+        # SEFI is ON by default (M4c), calibrated from the flux model against
+        # Suncatcher's SEFI cross-section (see inject/sefi.py::from_flux). A
+        # caller that wants an isolated memory-fault stream passes an explicit
+        # SefiInjector(track) (p=0) -- detect_eval does exactly this.
+        self.sefi = sefi if sefi is not None else SefiInjector.from_flux(flux)
         self.xid = xid or XidSimulator(ecc_on=False)
 
         self.activation_share = activation_share if inject_activations else 0.0

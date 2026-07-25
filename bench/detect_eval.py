@@ -50,6 +50,7 @@ from orbital_runtime.detect.abft import AbftTier
 from orbital_runtime.detect.watcher import SimulatedXidSource, WatcherTier
 from orbital_runtime.inject.injector import RadiationEnvironment
 from orbital_runtime.inject.memory import MemoryInjector
+from orbital_runtime.inject.sefi import SefiInjector
 from orbital_runtime.inject.xid import XidSimulator
 from orbital_runtime.orbit.flux import FluxModel
 from orbital_runtime.orbit.track import OrbitTrack
@@ -218,6 +219,12 @@ def evaluate_seed(
         seed=seed,
         n_steps=steps,
         orbits=orbits,
+        # SEFI OFF here: detect_eval measures MEMORY-fault detection recall
+        # against the exact loss-divergence oracle. SEFIs are a separate crash
+        # channel with their own recovery test; letting them fire would inject
+        # process deaths that no detection tier is meant to "catch", muddying
+        # the recall measurement. (SEFI is on by default in the product path.)
+        sefi=SefiInjector(flux.track, p_per_transit=0.0),
         xid=xid_sim,
     )
     detector = build_detector(w.model, tiers=tiers, xid_sim=xid_sim)

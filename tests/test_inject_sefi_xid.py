@@ -33,6 +33,53 @@ def test_sefi_is_off_by_default():
     assert inj.schedule(0.0, 100 * OrbitTrack().period_s, stream(0, STREAM_SEFI)) == []
 
 
+def test_from_flux_calibrates_a_nonzero_on_by_default_probability():
+    """M4c: SEFI is calibrated ON from the flux model, not invented/off.
+
+    `from_flux` rides the SDC-class upset stream at Suncatcher's SEFI/SDC
+    cross-section ratio, so a real irradiated device gets a nonzero, cited
+    per-transit SEFI probability.
+    """
+    from orbital_runtime.inject.sefi import SEFI_PER_SDC_EVENT
+    from orbital_runtime.orbit.flux import FluxModel, H100_HBM_BITS
+
+    flux = FluxModel(bits_resident=H100_HBM_BITS, base_rate_upsets_per_bit_day=1e-8)
+    inj = SefiInjector.from_flux(flux)
+    assert inj.enabled
+    assert 0.0 < inj.p_per_transit <= 1.0
+
+    # It equals 1 - exp(-r * mu) for r = sigma_SEFI/sigma_SDC and mu the
+    # expected SDC-class upsets in one SAA transit.
+    mu = flux.expected_upsets_in_saa_per_orbit()
+    expected = 1.0 - np.exp(-SEFI_PER_SDC_EVENT * mu)
+    assert inj.p_per_transit == pytest.approx(expected)
+
+
+def test_from_flux_probability_grows_with_exposure():
+    """More upsets per transit -> more SEFIs per transit (same beam ratio)."""
+    from orbital_runtime.orbit.flux import FluxModel, H100_HBM_BITS
+
+    lo = SefiInjector.from_flux(
+        FluxModel(bits_resident=H100_HBM_BITS, base_rate_upsets_per_bit_day=1e-9)
+    )
+    hi = SefiInjector.from_flux(
+        FluxModel(bits_resident=H100_HBM_BITS, base_rate_upsets_per_bit_day=1e-7)
+    )
+    assert hi.p_per_transit > lo.p_per_transit
+
+
+def test_suncatcher_cross_section_cross_check():
+    """The two Suncatcher numbers reproduce its stated '~1 SEFI per 5 krad'."""
+    from orbital_runtime.inject.sefi import (
+        DOSE_FLUENCE_P_PER_CM2_PER_RAD,
+        SUNCATCHER_SEFI_SIGMA_CM2,
+    )
+
+    fluence_5krad = 5000.0 * DOSE_FLUENCE_P_PER_CM2_PER_RAD
+    expected_sefis = SUNCATCHER_SEFI_SIGMA_CM2 * fluence_5krad
+    assert expected_sefis == pytest.approx(1.0, abs=0.3)  # 0.79 ~= 1
+
+
 def test_sefi_rate_matches_per_transit_probability():
     """Bernoulli per SAA transit, at the configured probability."""
     track = OrbitTrack()

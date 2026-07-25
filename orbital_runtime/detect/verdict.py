@@ -21,6 +21,10 @@ REASON_GRAD_NORM_ZSCORE = "grad_norm_zscore"
 REASON_LOSS_SPIKE = "loss_spike"
 REASON_ABFT_MISMATCH = "abft_mismatch"
 REASON_XID_FATAL = "xid_fatal"
+# A single-event functional interrupt (SEFI) or ECC-on double-bit DUE: the
+# process fell over. Not found by a tier -- the crash IS the signal -- but it
+# routes through the same rollback machinery, so it carries a Verdict.
+REASON_SEFI = "sefi_crash"
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,7 @@ class Verdict:
             REASON_NONFINITE_GRAD,
             REASON_ABFT_MISMATCH,
             REASON_XID_FATAL,
+            REASON_SEFI,
         )
 
     def as_record(self) -> dict[str, Any]:

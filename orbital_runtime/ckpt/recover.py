@@ -56,6 +56,7 @@ from typing import Any
 
 from ..detect.verdict import (
     REASON_ABFT_MISMATCH,
+    REASON_SEFI,
     REASON_XID_FATAL,
     Verdict,
 )
@@ -97,9 +98,14 @@ LAG_LOCALISED = 1
 # (LAG_LOCALISED = 1); the protected run leans on it, not on the guards.
 LAG_UNLOCALISED = 80
 
+# A SEFI / ECC-on DUE is a process CRASH: it corrupts nothing in the memory a
+# checkpoint holds, it just kills the run. So the newest verified checkpoint is
+# already safe -- the fault does not reach back into saved state at all. Margin
+# 1 (localised) is conservative here; anything <= the crash step is clean.
 DETECTION_LAG_BY_REASON: dict[str, int] = {
     REASON_ABFT_MISMATCH: LAG_LOCALISED,
     REASON_XID_FATAL: LAG_LOCALISED,
+    REASON_SEFI: LAG_LOCALISED,
 }
 
 # Consecutive failed recoveries before giving up. A run that cannot recover

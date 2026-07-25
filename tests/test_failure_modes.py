@@ -20,6 +20,7 @@ import pytest
 
 from orbital_runtime.inject.injector import RadiationEnvironment
 from orbital_runtime.inject.memory import MemoryInjector
+from orbital_runtime.inject.sefi import SefiInjector
 from orbital_runtime.orbit.flux import FluxModel
 from orbital_runtime.orbit.track import OrbitTrack
 from orbital_runtime.train import DEATH_NAN, TrainConfig, train
@@ -49,6 +50,11 @@ def make_env(workload, *, rate: float, seed: int, steps: int, orbits: float = 2.
         seed=seed,
         n_steps=steps,
         orbits=orbits,
+        # These tests isolate the MEMORY-fault failure modes (NaN vs silent
+        # divergence). SEFI is a separate crash channel (on by default in the
+        # product, tested in test_recovery.py); firing it here would let a
+        # process crash masquerade as a memory-fault death.
+        sefi=SefiInjector(flux.track, p_per_transit=0.0),
     )
 
 
