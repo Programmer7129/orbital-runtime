@@ -18,7 +18,11 @@ import pytest
 
 from orbital_runtime.orbit import OrbitTrack
 from orbital_runtime.orbit.flux import (
+    DEFAULT_ECC_LEAK_FRACTION,
     DEFAULT_SAA_MULTIPLIER,
+    ECC_DUE_SHARE,
+    ECC_MBU_SHARE,
+    ECC_SDC_SHARE,
     H100_HBM_BITS,
     MODE_ECC_OFF,
     MODE_ECC_ON,
@@ -173,6 +177,36 @@ def test_ecc_on_leaks_only_a_fraction():
     on = h100_flux(mode=MODE_ECC_ON, ecc_leak_fraction=0.02)
     assert on.expected_upsets_per_day() == pytest.approx(
         off.expected_upsets_per_day() * 0.02
+    )
+
+
+def test_ecc_leak_fraction_defaults_to_cited_mbu_share():
+    """M4c: the retired placeholder (0.02, uncited) is replaced by MICRO'21's
+    31.5% multi-bit share -- SEC-DED corrects single-bit but not multi-bit, so
+    the MBU share IS the ecc-on leak fraction. Cited, not invented."""
+    assert DEFAULT_ECC_LEAK_FRACTION == ECC_MBU_SHARE == pytest.approx(0.315)
+    # The share is duplicated in inject.memory (import-cycle avoidance); the two
+    # copies trace to the same MICRO'21 anchor and must never drift apart.
+    from orbital_runtime.inject.memory import MBU_SHARE
+
+    assert ECC_MBU_SHARE == MBU_SHARE
+
+
+def test_ecc_due_sdc_split_is_nsrec21_and_due_dominant():
+    """NSREC'21: with ECC on, DUE exceeds SDC by 2.2-2.7x (we take 2.3x). The
+    leaked (multi-bit) events split into a DUE-dominant crash channel and an
+    SDC miscorrection channel; the shares partition the leak."""
+    assert ECC_DUE_SHARE + ECC_SDC_SHARE == pytest.approx(1.0)
+    assert ECC_DUE_SHARE > ECC_SDC_SHARE  # DUE dominant
+    assert ECC_DUE_SHARE / ECC_SDC_SHARE == pytest.approx(2.3)  # NSREC'21 midpoint
+
+
+def test_ecc_on_default_leaks_the_cited_share():
+    """The default ecc_on flux now scales by the cited MBU share, no override."""
+    off = h100_flux(mode=MODE_ECC_OFF)
+    on = h100_flux(mode=MODE_ECC_ON)  # ecc_leak_fraction defaults to 0.315
+    assert on.expected_upsets_per_day() == pytest.approx(
+        off.expected_upsets_per_day() * ECC_MBU_SHARE
     )
 
 
