@@ -57,11 +57,29 @@ misses real faults on large activations or drowns in false positives on
 small ones.
 
 So the tolerance is **scaled to the arithmetic**, which is the "variance-
-aware threshold" idea: rounding error in a K-term dot product accumulates
-as a random walk, growing like eps*sqrt(K), and scales with the magnitude
-of the terms being summed. `_tolerance()` below builds exactly that bound.
-This is what makes the tier usable in bf16, whose eps is ~1e-2 -- 4000x
-looser than fp32's -- where a fixed threshold is hopeless.
+aware threshold" idea: rounding error in a K-term reduction accumulates as a
+random walk, growing like eps*sqrt(K), and scales with the magnitude of the
+terms being summed. `_tolerance()` below builds exactly that bound. This is
+what makes the tier usable in bf16, whose eps is ~1e-2 -- 4000x looser than
+fp32's -- where a fixed threshold is hopeless.
+
+Running-error scale: bound by the TERMS, not the RESULT (V-ABFT, M4c)
+--------------------------------------------------------------------
+The magnitude the eps*sqrt(K) bound must scale by is the size of the
+*partial sums* the reduction actually forms -- i.e. the L1 magnitude
+`sum|term|` of the summed terms -- NOT the post-reduction `|result|`. The
+two agree only when the terms share a sign. When they cancel, `|result|`
+collapses while the rounding noise (set by the partial sums) does not, so a
+`|result|`-keyed tolerance understates the true noise and fires on clean
+steps. This is exactly the 768-dim false-positive M4b measured: a wide MLP
+`c_proj` reduction (K=3072) cancels 3-4 orders of magnitude, and the
+`|result|`-scaled tolerance tripped on 3/6 clean runs while the L1-scaled
+one sits ~1000x below threshold. `_verify` therefore keys the tolerance to
+`max(L1(lhs), L1(rhs))` -- the running-error bound -- which is cancellation-
+invariant, so a single safety factor holds at every reduction width. Recall
+is unaffected: a real fault's discrepancy dwarfs rounding noise either way
+(a bit>=15 strike still lands far above the L1 bound; see detect_eval and
+tests/test_abft.py's sensitivity-floor cases).
 
 What it catches that tier 1 cannot
 ----------------------------------
@@ -165,7 +183,8 @@ class AbftTier:
         self._in_saa: bool = False
         self._findings: list[dict] = []
         # Queued device-side checks, resolved once per step. See _verify.
-        self._pending: list[tuple[str, Tensor, Tensor, int, str]] = []
+        # Each entry: (name, worst-row ratio device-scalar, k, dtype-string).
+        self._pending: list[tuple[str, Tensor, int, str]] = []
         self._enabled = False
 
     # ------------------------------------------------------------------ #
@@ -283,25 +302,38 @@ class AbftTier:
 
         # Reduce in fp32 regardless of the working dtype: a bf16 reduction
         # would inject more rounding noise than the fault we are hunting.
-        lhs = y_.to(torch.float32).sum(dim=-1)
-        rhs = x_.to(torch.float32) @ s
+        xf = x_.to(torch.float32)
+        yf = y_.to(torch.float32)
+        lhs = yf.sum(dim=-1)
+        rhs = xf @ s
 
-        residual = (lhs - rhs).abs().max()
+        residual = (lhs - rhs).abs()  # per-row (per-reduction) discrepancy
         k = x_.shape[-1]  # reduction length
 
-        # Magnitude floor of 1e-8: an all-zero GEMM has no scale to key to.
+        # Running-error (V-ABFT) scale: key the tolerance to the L1 magnitude
+        # of the TERMS each side sums, not the post-reduction |value|. Under
+        # catastrophic cancellation sum|term| >> |result|, so a |result|-keyed
+        # tolerance understates the true rounding noise and false-positives on
+        # a wide reduction (the 768-dim c_proj case, M4b). The L1 bound equals
+        # |result| when the terms share a sign and stays large when they
+        # cancel, so one safety factor holds at every width. Per-row (not a
+        # global max) so a large-scale row cannot mask a small-scale row's
+        # fault. Magnitude floor 1e-8: an all-zero GEMM has no scale to key to.
+        l1_lhs = yf.abs().sum(dim=-1)  # L1 of the output-dim reduction
+        l1_rhs = xf.abs() @ s.abs()  # L1 bound of the input-dim matvec
         scale = torch.maximum(
-            torch.maximum(lhs.abs().max(), rhs.abs().max()),
+            torch.maximum(l1_lhs, l1_rhs),
             torch.tensor(1e-8, device=lhs.device, dtype=lhs.dtype),
         )
         # Tolerance coefficient from the single source of truth (`_tolerance`),
         # evaluated at unit scale so we can multiply the device-tensor `scale`
-        # without an early host sync. Previously this line inlined the same
-        # eps*sqrt(K)*safety formula -- a duplicate the hostile review flagged
-        # (item 17). One formula now, exercised by tests/test_abft.py.
+        # without an early host sync (item 17: one formula, no inlined
+        # duplicate). Reduce to the worst-row ratio here -- still a device
+        # tensor -- so `_resolve_pending` syncs once for all checks.
         tol = scale * _tolerance(x_.dtype, k, 1.0, self.safety_factor)
+        ratio = (residual / tol).max()
 
-        self._pending.append((name, residual, tol, k, str(x_.dtype).replace("torch.", "")))
+        self._pending.append((name, ratio, k, str(x_.dtype).replace("torch.", "")))
 
     @torch.no_grad()
     def _resolve_pending(self) -> None:
@@ -309,10 +341,10 @@ class AbftTier:
         if not self._pending:
             return
         ratios = torch.stack(
-            [r / t.clamp_min(1e-38) for _, r, t, _, _ in self._pending]
+            [r for _, r, _, _ in self._pending]
         ).tolist()  # <- the single sync point
 
-        for (name, _, _, k, dtype), ratio in zip(self._pending, ratios):
+        for (name, _, k, dtype), ratio in zip(self._pending, ratios):
             if ratio > 1.0:
                 self.stats.mismatches += 1
                 self._findings.append(

@@ -363,3 +363,66 @@ def test_stats_report_actual_sampling():
     d = tier.stats.as_dict()
     assert d["abft_gemms_seen"] == 2
     assert d["abft_sample_rate_actual"] == 1.0
+
+
+# --------------------------------------------------------------------- #
+# Running-error (L1) scale -- the M4c fix for the 768-dim false positives
+# --------------------------------------------------------------------- #
+
+
+def test_tolerance_is_keyed_to_l1_not_post_reduction_magnitude():
+    """THE regression test for the catastrophic-cancellation false positive.
+
+    A wide reduction whose terms nearly cancel has |result| << sum|term|. The
+    old tolerance keyed to |result| understated the true rounding noise and
+    tripped on clean steps (3/6 of the 768-dim runs, STATUS M4b). The fix keys
+    the tolerance to the L1 term-magnitude, which is cancellation-invariant.
+
+    White-box: the ratio the tier stores must match the L1-scaled formula and
+    be strictly, materially below the |result|-scaled one -- so a refactor back
+    to `max(|lhs|, |rhs|)` fails here loudly, not silently in production.
+    """
+    torch.manual_seed(0)
+    k, out = 512, 64
+    lin = nn.Linear(k, out, bias=False)
+    with torch.no_grad():
+        w = torch.randn(out, k) * 5.0
+        w[0::2] += 8.0  # even output cols biased +, odd biased - => the
+        w[1::2] -= 8.0  # out-dim reduction sums large ~cancelling terms
+        lin.weight.copy_(w)
+    x = torch.randn(4, 16, k)
+
+    tier = AbftTier(lin, base_sample_rate=1.0, adaptive=False).attach()
+    tier.refresh_checksums()
+    tier.arm()
+    lin(x)
+    assert len(tier._pending) == 1
+    stored_ratio = float(tier._pending[0][1])  # the device scalar the tier kept
+
+    # Recompute both candidate ratios from the same arithmetic.
+    with torch.no_grad():
+        s = lin.weight.sum(dim=0).to(torch.float32)
+        lhs = lin(x).to(torch.float32).sum(dim=-1)
+        rhs = x.to(torch.float32) @ s
+        residual = (lhs - rhs).abs()
+        coeff = _tolerance(torch.float32, k, 1.0, tier.safety_factor)
+
+        value_scale = torch.maximum(
+            torch.maximum(lhs.abs().max(), rhs.abs().max()), torch.tensor(1e-8)
+        )
+        ratio_value = float((residual.max() / (value_scale * coeff)))
+
+        l1 = torch.maximum(
+            lin(x).to(torch.float32).abs().sum(dim=-1),
+            x.to(torch.float32).abs() @ s.abs(),
+        )
+        ratio_l1 = float((residual / (torch.maximum(l1, torch.tensor(1e-8)) * coeff)).max())
+
+    assert stored_ratio == pytest.approx(ratio_l1, rel=1e-4)
+    # L1 is the looser (correct) bound: strictly below the |result| ratio, and
+    # by a wide margin here (the terms cancel), which is exactly what kills the
+    # false positive without touching recall.
+    assert ratio_l1 < 0.5 * ratio_value
+
+    tier.observe(step=0)
+    assert tier.stats.mismatches == 0  # clean cancelling reduction: no FP
