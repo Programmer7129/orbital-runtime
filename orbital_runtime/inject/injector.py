@@ -55,7 +55,7 @@ from dataclasses import dataclass, field
 
 import torch
 
-from ..orbit.flux import FluxModel, UpsetEvent
+from ..orbit.flux import ECC_DUE_SHARE, FluxModel, UpsetEvent
 from ..rng import STREAM_COMPUTE, STREAM_MEMORY, STREAM_SEFI, STREAM_XID, stream
 from ..telemetry import (
     EVENT_ACTIVATION,
@@ -66,7 +66,7 @@ from ..telemetry import (
 )
 from .compute import ComputeInjector
 from .memory import MemoryInjector
-from .sefi import SefiCrash, SefiEvent, SefiInjector
+from .sefi import SEFI_DUE, SefiCrash, SefiEvent, SefiInjector
 from .xid import XidSimulator
 
 
@@ -92,6 +92,7 @@ class InjectionStats:
     multi_bit_events: int = 0  # events that flipped more than one bit (MBU)
     activation_hits: int = 0
     sefis: int = 0
+    dues: int = 0  # ECC-on detected-uncorrectable functional interrupts
     xids: int = 0
     bit_histogram: dict[int, int] = field(default_factory=dict)
 
@@ -104,6 +105,7 @@ class InjectionStats:
             "multi_bit_events": self.multi_bit_events,
             "activation_hits": self.activation_hits,
             "sefis": self.sefis,
+            "dues": self.dues,
             "xids": self.xids,
         }
 
@@ -234,8 +236,13 @@ class RadiationEnvironment:
             self._upset_cursor < len(self.upsets)
             and self.upsets[self._upset_cursor].t <= t
         ):
-            self._fire_upset(self.upsets[self._upset_cursor], step)
+            # Advance the cursor BEFORE firing: an ECC-on DUE raises a
+            # SefiCrash here, and if the cursor had not moved the same event
+            # would re-fire on every replay attempt (an infinite loop). Same
+            # discipline as the SEFI loop below.
+            ev = self.upsets[self._upset_cursor]
             self._upset_cursor += 1
+            self._fire_upset(ev, step)  # may raise SefiCrash (ECC-on DUE)
 
         while (
             self._sefi_cursor < len(self.sefi_events)
@@ -264,6 +271,17 @@ class RadiationEnvironment:
                 )
             return
 
+        # --- ECC-on redistribution: SDC -> DUE (NSREC'21) ---
+        # Under ECC, every leaked event is multi-bit (single-bit is corrected).
+        # NSREC'21 finds DUE dominant: most leaked events are detected-
+        # uncorrectable functional interrupts (a crash we recover from by
+        # process-restart), a minority miscorrected silent corruption (SDC,
+        # injected). The flux model already scaled the event rate down to the
+        # leaked (MBU) share; here we split each leaked event DUE vs SDC.
+        if self.xid.ecc_on and self._rng_xid.random() < ECC_DUE_SHARE:
+            self._fire_due(ev, step)  # emits fatal DUE Xid, then raises
+            return
+
         cluster = self.memory.inject_event(self._rng_mem)
         if cluster is None:
             return
@@ -285,13 +303,37 @@ class RadiationEnvironment:
                 **cluster.as_record(),
             )
 
-        # A multi-bit event defeats SEC-DED -> uncorrectable under ECC. This is
-        # what drives the SDC->DUE redistribution in the Xid stream (M4c).
-        xid_ev = self.xid.on_flip(ev.t, self._rng_xid, multi_bit=cluster.multi_bit)
+        # Xid stream. Under ecc_off a multi-bit event would be uncorrectable,
+        # but the demo default reports nothing at all (report_prob 0 -- the
+        # silent-corruption regime). Under ecc_on, reaching HERE means this
+        # leaked event was MISCORRECTED into a silent SDC (the DUE half already
+        # crashed above), so it must NOT surface as a fatal Xid -- a fatal Xid
+        # is a DETECTED error, and an SDC is by definition undetected. Hence
+        # multi_bit is forced False on the ecc_on SDC path.
+        xid_ev = self.xid.on_flip(
+            ev.t, self._rng_xid, multi_bit=(cluster.multi_bit and not self.xid.ecc_on)
+        )
         if xid_ev is not None:
             self.stats.xids += 1
             if self.telemetry:
                 self.telemetry.emit(EVENT_XID, step=step, **xid_ev.as_record())
+
+    def _fire_due(self, ev: UpsetEvent, step: int) -> None:
+        """An ECC-on detected-uncorrectable error: a functional interrupt.
+
+        The device's ECC logic caught a multi-bit error it could not fix and
+        halts the job (Xid 48/95 class). Surfaced as a fatal Xid and raised as
+        a SefiCrash(DUE) so it takes the same process-restart recovery path as
+        a SEFI. This is the DUE half of the SDC->DUE redistribution.
+        """
+        self.stats.dues += 1
+        orbit = self.flux.track.orbit_index(ev.t)
+        xid_ev = self.xid.on_sefi(ev.t, self._rng_xid)  # always fatal (detected)
+        self.stats.xids += 1
+        if self.telemetry:
+            self.telemetry.emit(EVENT_SEFI, step=step, t_sim=ev.t, orbit=orbit, flavour=SEFI_DUE)
+            self.telemetry.emit(EVENT_XID, step=step, **xid_ev.as_record())
+        raise SefiCrash(ev.t, orbit, SEFI_DUE)
 
     def _fire_sefi(self, ev: SefiEvent, step: int) -> None:
         self.stats.sefis += 1

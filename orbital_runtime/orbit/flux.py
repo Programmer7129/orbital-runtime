@@ -90,23 +90,42 @@ DEFAULT_SAA_MULTIPLIER = 75.0
 # conservative low end of that band.
 DEFAULT_STORM_MULTIPLIER = 10.0
 
-# Fraction of upsets that leak through SEC-DED ECC in `ecc_on` mode.
+# --- ECC-on redistribution (M4c): SDC suppressed, DUE amplified -----------
 #
-# !! ENGINEERING ASSUMPTION -- NOT YET TRACEABLE TO A CITED NUMBER !!
+# The retired placeholder was DEFAULT_ECC_LEAK_FRACTION = 0.02 (uncited). The
+# beam-data audit gives the cited anchors that replace it:
 #
-# Research doc SS2 states the qualitative behaviour ("ECC-on mode: only
-# multi-bit residuals + logic faults + SEFIs leak through") but gives no
-# quantitative multi-bit-upset fraction, and we will not invent one: PLAN.md
-# acceptance criterion 3 requires every physics constant to be traceable to
-# the research doc, and a fabricated MBU fraction in a YC demo is a
-# credibility risk we are not taking.
+#   * MICRO'21 (doi 10.1145/3466752.3480111): 31.5% of upset EVENTS are
+#     multi-bit. SEC-DED corrects a single-bit error but not a multi-bit one,
+#     so ONLY the multi-bit share defeats ECC and reaches the compute. That
+#     31.5% IS the ecc-on leak fraction -- this is the MICRO'21-anchored MBU
+#     share the placeholder is retired in favour of.
+#   * NSREC'21 (arXiv 2108.00554): with ECC on the functional-interrupt (DUE)
+#     rate exceeds the silent-corruption (SDC) rate by 2.2-2.7x -- ECC does not
+#     merely SUPPRESS upsets, it REDISTRIBUTES them SDC -> DUE (it cuts SDC up
+#     to 21x while raising DUE up to 13.7x). So of the multi-bit events that
+#     leak, most manifest as a detected-uncorrectable crash (DUE, recovered by
+#     process-restart, same path as a SEFI) and a minority as a miscorrected
+#     silent flip (SDC, injected into the tensors).
 #
-# 0.02 is a placeholder chosen to be small-but-nonzero so the ecc_on code
-# path is exercised and testable. Any headline number produced in `ecc_on`
-# mode MUST cite a real MBU fraction first -- see STATUS.md (M4 needs).
-# `ecc_off` (the default, and the mode the headline demo runs in) is fully
-# calibrated and unaffected by this constant.
-DEFAULT_ECC_LEAK_FRACTION = 0.02
+# `ecc_leak_fraction` is the leaked (non-corrected) event fraction = MBU share;
+# `ecc_due_share`/`ecc_sdc_share` split it per NSREC'21. The SDC slice
+# (~0.095 of all events) is what still gets injected; the DUE slice (~0.22)
+# becomes functional interrupts. Net SDC is suppressed ~10x vs ecc_off,
+# consistent with NSREC'21's "up to 21x" upper bound.
+#
+# Conditions caveat (honesty flag, kept): MICRO'21 is neutron / HBM2 and
+# NSREC'21 is a specific GPU under its own ECC scheme; our injector is
+# dtype-generic fp32. These are cited anchors mapped onto our model, not a
+# device-matched measurement -- beam validation would calibrate the exact
+# split for a given part. (Mirrors inject.memory.MBU_SHARE; duplicated here to
+# avoid an import cycle flux <- inject.injector <- inject.__init__.)
+ECC_MBU_SHARE = 0.315  # MICRO'21: multi-bit share = the ecc-on leak fraction
+ECC_DUE_TO_SDC_RATIO = 2.3  # NSREC'21 midpoint of 2.2-2.7x (DUE dominant)
+# Of the leaked (multi-bit) events, the DUE vs SDC split.
+ECC_DUE_SHARE = ECC_DUE_TO_SDC_RATIO / (1.0 + ECC_DUE_TO_SDC_RATIO)  # ~0.697
+ECC_SDC_SHARE = 1.0 - ECC_DUE_SHARE  # ~0.303
+DEFAULT_ECC_LEAK_FRACTION = ECC_MBU_SHARE  # the cited replacement (~0.315)
 
 MODE_ECC_OFF = "ecc_off"
 MODE_ECC_ON = "ecc_on"

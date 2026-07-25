@@ -66,6 +66,7 @@ from ..orbit.track import OrbitTrack
 # SEFI flavours we simulate.
 SEFI_CRASH = "crash"  # process dies outright
 SEFI_HANG = "hang"  # process stops making progress
+SEFI_DUE = "due"  # ECC-on detected-uncorrectable error (functional interrupt)
 
 # Default per-SAA-transit SEFI probability for the RAW constructor. 0.0 = off.
 # The calibrated, on-by-default value is computed by `from_flux` below; this
