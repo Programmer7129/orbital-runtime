@@ -56,3 +56,44 @@ the productization of what Google knew. That's us vs LANL.
 - **Growing-problem stat:** every transistor shrink lowers critical charge → more
   upsets; H100 3.2x worse memory MTBE than A100; DDR5 ships on-die ECC because flips
   became a SEA-LEVEL problem.
+
+## "Feature or company?" / "Anyone can rebuild your 2-day MVP" (THE question)
+
+**Reframe the 2 days:** the 2-day artifact is the DEMO, not the product/moat. AI
+compressed "build a credible demo" from months→days — for us AND every competitor. So
+the demo was never the moat; AI commoditizing code is the ARGUMENT for why the moat
+must be non-code: beam time, flight heritage, accumulated cross-chip failure data,
+customer trust, first-mover platform position. We've been building exactly those.
+
+**The cloud analogy works FOR us:** private-cloud→AWS proved undifferentiated infra
+reliability is BOUGHT, not built. No operator's edge is "we hand-rolled bit-flip
+recovery." Operators building in-house today = the "private cloud" phase; consolidation
+onto a platform is the bet. (Also: AWS won not on EC2 alone but on the EXPANDING
+surface — 200+ services raised switching cost until self-hosting made no sense.)
+
+**Is there an expanding surface? YES — reliability is a privileged wedge** (sits
+UNDER the customer's workload, on every satellite, sees everything — same launchpad
+Datadog/CrowdStrike/Cloudflare expanded from a narrow start). Five expansion vectors:
+1. Reliability → **observability/fleet-mgmt**: own the telemetry → health dashboards,
+   predictive failure ("deorbit this sat before its HBM dies"). The Datadog path.
+2. Reliability → **orchestration/scheduling**: we know which nodes are healthy / in the
+   SAA / degraded — exactly what a scheduler needs. Beachhead to BECOME the
+   workload-placement layer (the "layer above us," KubeSpace territory).
+3. Reliability → **data/assurance business**: cross-chip beam-validated failure model
+   is a saleable DATA ASSET — to insurers (pricing orbital-compute risk), chip buyers
+   (which GPU survives orbit), mission designers. A second business the software emits.
+4. Reliability → **cross-environment TAM**: same runtime → LEO, then lunar/deep-space
+   (more radiation, more need), then TERRESTRIAL edge/HPC (Meta/Google SDC is proven).
+   TAM = "any GPU where reliability is hard," not just orbital GPUs.
+5. Reliability → **chip-generation treadmill**: every new chip (B200/Rubin/TPU v7)
+   needs re-characterization → recurring, renews each generation. Subscription baked
+   into the physics.
+
+**Honest risk (say it):** the platform expansion is a THESIS, not a fact — today we
+have one feature. Getting to expand requires winning the beachhead, the market
+materializing, and out-executing whoever else wants the orchestration layer. The
+"feature that gets acquired by NVIDIA / the orchestration winner" outcome is REAL and
+FINE (Run:ai precedent) — not a failure mode. One-liner: "Resilience is the wedge, not
+the whole company — it's a privileged wedge because it sits under everything and sees
+everything, which is exactly how Datadog and CrowdStrike turned one feature into a
+platform."
