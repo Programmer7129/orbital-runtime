@@ -121,11 +121,12 @@ it is negligible; at the band *top* it is visible, and it is reported, not tuned
 | tier 1 + 2 (guards + ABFT) | 1.00 | 1.00 | **4 steps** |
 
 Recall holds at 1.00 at real scale, ABFT-driven (first detection is `abft_mismatch` on 6/6);
-6/6 irradiated runs corrupted. ⚠️ **A scale-dependent limitation surfaced** — ABFT false-positives
-on **3/6 *clean* runs** at 768-dim (see honesty flags), so clean-run precision does *not* yet hold
-at real scale without a cancellation-aware tolerance. (The demo seed 3 is unaffected: 0 clean FP.)
+6/6 irradiated runs corrupted. The M4b scale-dependent false-positive (ABFT tripping on 3/6 *clean*
+768-dim runs) is **fixed in M4c** by the V-ABFT running-error/L1 tolerance — re-measured on MPS at
+768-dim, clean-run FPs are **0/6** with recall still 1.00 (`bench/results/detect-eval-mps-768.json`;
+see honesty flags).
 
-Raw JSON for all four: `bench/results/*_l4.json`.
+Raw JSON: `bench/results/*_l4.json` (GPU) and `detect-eval-mps-768.json` (the M4c FP-fix re-measure).
 
 ### Laptop demo (no GPU) — seed 1337, 0.81M-param nanoGPT, 200 steps, 2 orbits, MPS/CPU
 
@@ -165,8 +166,8 @@ they shifted from the M3-era 7/7/105 after the review's rollback-resume and dete
 | tier 1 (finite/z-score/loss-spike guards) | 1.00 | 0.83 | 24 steps |
 | tier 1 + 2 (guards + ABFT) | **1.00** | **1.00** | **2 steps** |
 
-Zero false positives across 12 clean runs *at this scale* (at 768-dim, ABFT false-positives on
-clean runs — see honesty flags). Ground truth is *exact*, not thresholded:
+Zero false positives across 12 clean runs (and, since M4c's V-ABFT L1 tolerance, **0/6 at 768-dim
+too** — the wide-reduction false positive is fixed). Ground truth is *exact*, not thresholded:
 determinism gives a free oracle — the first step where a rate-0 and an irradiated run's losses
 diverge is, by construction, the first fault that **propagated**, so recall is measured only
 against faults that can actually hurt the model (a ReLU-masked upset is never scored as a miss).
@@ -204,6 +205,39 @@ The 89.8% SAA share (default 75× multiplier) lands inside the **80–97% band f
 and reproduces Proba-II's observed ~90%. Daily total is invariant to the multiplier — the SAA
 *redistributes* upsets in time, it does not manufacture them.
 
+### Radiation channels beyond single-bit flips (M4c — SEFI, MBU, ECC redistribution)
+
+The bit-flip-only model was incomplete against every source that measured the alternatives. The
+beam-data audit (`docs/research/beam-calibration-audit.md`) closed three gaps with cited anchors:
+
+- **SEFIs — process crashes/hangs, now ON by default.** Suncatcher (arXiv 2511.19468, 67 MeV
+  protons, UC Davis Crocker) measured SEFI σ = 2e-11 cm²/chip against SDC σ = 6–9e-9 cm²/chip — a
+  fluence-independent ratio of ~1 functional interrupt per ~375 silent-corruption events. The SEFI
+  channel rides the same SAA proton stream at that cross-section ratio (`SefiInjector.from_flux`),
+  so it is calibrated, not invented. A SEFI raises `SefiCrash` and takes the process-restart
+  recovery path. *(The raw `SefiInjector(track)` still defaults to p=0 so tests can isolate the
+  memory channel; the calibrated on-by-default value comes from `from_flux`.)*
+- **Multi-bit upsets (MBUs) — an upset EVENT is now a cluster, not a bit.** MICRO'21
+  (doi 10.1145/3466752.3480111; V100 HBM2, ChipIR neutron beam): **31.5% of upset events are
+  multi-bit**, ~75% of those byte-contiguous. `inject.memory.inject_event` models the small-cluster
+  regime (68.5% single-bit; 31.5% multi-bit, contiguous or scattered); the thousands-of-entries tail
+  is a disclosed unmodeled extreme. A pure single-bit model understates correlated corruption and
+  overstates ECC effectiveness — this fixes both.
+- **ECC as SDC→DUE redistribution, not mere suppression.** NSREC'21 (arXiv 2108.00554): with ECC
+  on, SEC-DED corrects single-bit errors but **only the multi-bit share (31.5%) leaks**, and of what
+  leaks the functional-interrupt (DUE) rate exceeds silent-corruption (SDC) by **2.2–2.7× (we take
+  2.3×)** — ECC cuts SDC up to 21× while *raising* DUE up to 13.7×. `--ecc on` now scales the event
+  rate to the MICRO'21 MBU share and splits each leaked event DUE-dominant: ~0.22 of all events
+  become a detected-uncorrectable crash (recovered like a SEFI), ~0.095 a miscorrected silent SDC
+  (injected). This retires the old uncited `DEFAULT_ECC_LEAK_FRACTION = 0.02` placeholder.
+
+> ⚠️ **Conditions caveat (kept as an honesty flag).** MICRO'21 is neutron / HBM2 and NSREC'21 is a
+> specific GPU under its own ECC scheme; this injector is dtype-generic fp32. These are cited anchors
+> *mapped onto* our model, not a device-matched measurement — **beam validation would calibrate the
+> exact MBU share and DUE/SDC split for a given part.** `--ecc on` is not the headline demo (which
+> runs `ecc_off`, the calibratable single-bit proxy); it is the modeled ECC-on regime with its
+> provenance disclosed.
+
 ---
 
 ## Architecture
@@ -212,8 +246,8 @@ and reproduces Proba-II's observed ~90%. Daily total is invariant to the multipl
 orbital_runtime/
 ├── orbit/     track.py  — parametric 95-min LEO orbit; phase-gated SAA window (~10 min/orbit)
 │              flux.py   — time-varying Poisson intensity λ(t): base × bits × SAA × storm
-├── inject/    memory.py — Poisson bit-flips: tensor.view(int32) ^= (1<<k) on params/optimizer
-│              compute.py, sefi.py, xid.py — activation hooks, hangs/crashes, synthetic Xid stream
+├── inject/    memory.py — Poisson bit-flips ^= (1<<k); MBU clusters (MICRO'21 31.5%); SDC→DUE under --ecc on
+│              compute.py, sefi.py, xid.py — activation hooks, SEFIs (on, Suncatcher-calibrated), Xid stream
 ├── detect/    guards.py — tier 1: isfinite + grad-norm z-score + loss-spike (≈free)
 │              abft.py   — tier 2: sampled checksum verification around nn.Linear GEMMs
 │              watcher.py— tier 3: ECC/Xid consumer (synthetic in sim; real nvidia-smi ECC on L4)
@@ -224,7 +258,7 @@ demo/
 ├── workloads/nanogpt/  — char-level Shakespeare nanoGPT (CPU/MPS-sized)
 ├── dashboard/          — self-contained HTML/JS dashboard + build.py (JSONL → telemetry_data.js)
 └── run_demo.sh         — the headline demo, end to end
-bench/  overhead.py, detect_eval.py, results/*_l4.json   tests/  (270 pass / 2 skipped on macOS/MPS)
+bench/  overhead.py, detect_eval.py, results/*_l4.json   tests/  (287 pass / 3 skipped on macOS/MPS)
 ```
 
 **Differentiator — "adaptive vigilance":** detection intensity *and* checkpoint cadence are keyed
@@ -239,8 +273,9 @@ and checkpoint cadence.
 
 1. **Device-agnostic core** — runs on CPU/MPS; CUDA-only paths (DCGM/Xid, cuda-checkpoint) sit
    behind interfaces with simulation fallbacks.
-2. **Calibration is sacred** — every physics constant in `flux.py`/`track.py` carries a comment
-   citing its source. (Two remaining exceptions are flagged below.)
+2. **Calibration is sacred** — every physics constant in `flux.py`/`track.py`/`sefi.py`/`memory.py`
+   carries a comment citing its source. (M4c retired the last two placeholders — ECC leak fraction
+   and SEFI per-transit — for cited anchors; a neutron/HBM2 *conditions caveat* remains, flagged below.)
 3. **Determinism** — the flip schedule is drawn before step 0 from named RNG streams (not from
    float state), so protected and unprotected runs face a **bit-identical bombardment** and the
    comparison is a controlled experiment; turning ABFT on cannot shift the radiation. Run *outputs*
@@ -255,7 +290,7 @@ and checkpoint cadence.
 
 ```bash
 make venv install     # .venv + editable install + dev deps
-make test              # full suite: 270 pass / 2 skipped on macOS/MPS, ~32 s (Linux/CUDA differs by platform-adaptive skips)
+make test              # full suite: 287 pass / 3 skipped on macOS/MPS, ~40 s (Linux/CUDA differs by platform-adaptive skips)
 make demo              # the three runs, raw (no dashboard)
 demo/run_demo.sh       # the three runs + dashboard (NO_OPEN=1 to skip auto-open)
 
@@ -277,30 +312,33 @@ These are tracked in `STATUS.md` and enforced in code; nothing here is quietly s
   to hit at flight rates. **On the L4 this is retired: the calibrated 1e-7 rate kills the unprotected
   run with no elevation** (see the real-scale section). The 1e-9→1e-7 band is what real H100 bit
   counts imply, asserted in `tests/test_flux.py`.
-- **ABFT false-positives at real scale (found M4b, not yet fixed).** On the 85.3M model, ABFT's
-  checksum trips on **3/6 *clean* (unirradiated) runs** (`abft_mismatch`, a *certain* verdict) — it
-  was 0/12 at the 32-dim test scale. Root cause: the mismatch tolerance scales with the
-  post-reduction `|value|`, but the checksum sums over the wide output dimension, so **catastrophic
-  cancellation** makes true fp32 rounding noise exceed the tolerance on some steps. The fix is a
-  running-error / L1 tolerance bound — the "variance-aware threshold" of V-ABFT the module already
-  cites (`detect/abft.py`); **recall is unaffected** (real faults dwarf any tolerance, so the
-  detect_eval recall stays 1.00). Until then, clean-run *precision* is a tiny-scale result. The
-  headline mission (seed 3) is unaffected — 0 clean FP on that seed.
-- **Two uncited constants, both OFF by default** — `DEFAULT_ECC_LEAK_FRACTION` (`flux.py`) and the
-  SEFI `p_per_transit` (`sefi.py`) are engineering placeholders, not citations. The headline demo
-  runs `ecc_off` with SEFIs off, so no reported number depends on them. They need a real multi-bit-
-  upset fraction / per-transit probability before any `ecc_on` or SEFI number is quoted. **(Untouched
-  in M4b — §4 stays open.)**
-- **The ECC threat-model inversion — own it (review item 4).** The headline runs `ecc_off`: bare
-  single-bit DRAM upsets, which is the regime we can calibrate to published per-bit rates. But real
-  deployments fly **ECC-on**, and under ECC the single-bit DRAM flips this demo injects are exactly
-  the ones the hardware *corrects*. What actually leaks through ECC is the residual set —
-  multi-bit-upset leakage, SRAM/logic/flip-flop faults, and SEFIs — and those are precisely the
-  channels this repo has **off by default and uncited** (the two placeholders above). So `ecc_off` is
-  best understood as the **calibratable proxy regime**: it exercises the full detect→rollback→replay
-  machinery against a rate we can defend, while the ECC-on residual channels — the ones that matter in
-  flight — are what real **beam validation** would calibrate before any ECC-on number is quoted. We do
-  not claim the demo's single-bit DRAM rate is the in-flight ECC-on threat; it is the tractable stand-in.
+- **ABFT false-positives at real scale — FIXED in M4c.** On the 85.3M model, ABFT's checksum tripped
+  on **3/6 *clean* (unirradiated) runs** (`abft_mismatch`, a *certain* verdict) while it was 0/12 at
+  the 32-dim scale. Root cause: the mismatch tolerance scaled with the post-reduction `|value|`, but
+  a wide MLP `c_proj` reduction (K=3072) **cancels 3–4 orders of magnitude**, so true fp32 rounding
+  noise exceeded the tolerance on some steps. The fix (`detect/abft.py`) keys the tolerance to the
+  **L1 magnitude of the summed terms** — the running-error / variance-aware V-ABFT bound — which is
+  cancellation-invariant, so one safety factor holds at every width. Re-measured on MPS at 768-dim:
+  clean-run FPs **3/6 → 0/6, recall still 1.00** (`bench/results/detect-eval-mps-768.json`). The 32
+  ABFT unit tests pass unchanged, including the sensitivity floor (bit ≥15 caught, bit ≤12 missed);
+  a white-box regression test pins the L1 scale so a refactor back to `|value|` fails loudly.
+- **The two former placeholders are now cited (M4c).** `DEFAULT_ECC_LEAK_FRACTION` is retired in
+  favour of MICRO'21's **31.5% multi-bit share** (SEC-DED leaks exactly the MBU fraction), and the
+  SEFI `p_per_transit` now derives from Suncatcher's **SEFI/SDC cross-section ratio** (~1 per 375
+  events) via `SefiInjector.from_flux`. Both trace to the beam-data audit. **SEFIs and MBU clustering
+  are ON by default; ECC-on redistribution is modeled under `--ecc on`.** The remaining honesty is a
+  **conditions caveat, not a missing citation**: the anchors are neutron/HBM2 (MICRO'21) and a
+  specific GPU/ECC scheme (NSREC'21) mapped onto a dtype-generic fp32 injector — beam validation
+  would calibrate the exact share and split for a given part (see the Radiation-channels section).
+- **The ECC threat-model, now modeled (review item 4, extended in M4c).** The headline still runs
+  `ecc_off`: bare single-bit DRAM upsets, the regime we can calibrate to published per-bit rates. But
+  real deployments fly **ECC-on**, where single-bit flips are *corrected* and what leaks is the
+  residual set — multi-bit-upset leakage (now modeled: MICRO'21 31.5%), SEFIs (now on, Suncatcher-
+  calibrated), and the SDC→DUE redistribution (now modeled: NSREC'21). `ecc_off` remains the
+  **calibratable proxy** that exercises the full detect→rollback→replay machinery against a defensible
+  rate; `--ecc on` is the modeled residual-channel regime with its provenance disclosed. We still do
+  not claim the demo's single-bit DRAM rate is the in-flight ECC-on threat — beam validation is what
+  would pin the ECC-on numbers before any is quoted as measured.
 - **Unprotected death is only *demonstrated* at the band top (1e-7) — review item 9.** At the lower,
   more representative calibrated rates (1e-8, and especially 1e-9, where modern deep-submicron flight
   data actually sits) the **unprotected run survives the tested mission length**: too few upsets land
@@ -337,11 +375,16 @@ These are tracked in `STATUS.md` and enforced in code; nothing here is quietly s
   **77 steps old** (measured), `LAG_UNLOCALISED` is now 80 and such deep rollbacks frequently fall to
   the best-effort path (counted separately, never reported as proven). This is the quantitative case
   for ABFT, whose one-step-old trusted checksum gives margin 1 and is unaffected by guard warmup.
+- **No TID / aging term (disclosed gap, out of scope).** This is a *rate-only* upset simulator: it
+  models single-event effects (flips, MBUs, SEFIs) but **not** total-ionizing-dose degradation or
+  displacement damage — Suncatcher saw HBM irregularities from ~2 krad cumulative and MICRO'21 noted
+  displacement-damage weak cells. A cumulative-dose model is out of scope for a rate-level demo; it is
+  named here so the omission is explicit, not hidden.
 - **M4b is done on an NVIDIA L4 24GB** (not A100/H100): real-scale overhead, precision/recall, and
   calibrated-rate wall-clock are all re-measured above and labelled *NVIDIA L4 24GB*; the MPS/CPU
   tables below are kept and labelled separately. `DcgmXidSource` (real ECC/Xid polling) is
-  implemented and validated on the L4. **Still open:** the demo video, the two citations above, and
-  the ABFT-at-scale tolerance fix.
+  implemented and validated on the L4. **The ABFT-at-scale tolerance fix is done (M4c, above).**
+  **Still open:** the demo video, and a GPU rerun of the frozen L4 bundle under current code.
 
 ---
 
@@ -359,7 +402,12 @@ occur in SAA transits (<20 min/orbit); Proba-II ~90%, a 1025 km satellite 97.3%;
 **Fault injection.** PyTorchFI (UIUC/NVIDIA) tensor-level approach, vendored/extended, not
 hard-depended; NVBitFI (SASS-level) cited as a future validation path; tensor-level injection is
 accepted for error-propagation studies (arXiv 2412.08466). SEFIs: Jetson RADECS 2024 — reboot
-cross-section *exceeds* bit-error cross-section, so crashes matter as much as flips.
+cross-section *exceeds* bit-error cross-section, so crashes matter as much as flips; **Suncatcher**
+(arXiv 2511.19468, 67 MeV p+, Crocker) SEFI σ = 2e-11 vs SDC σ = 6–9e-9 cm²/chip pins the
+per-transit SEFI probability. Multi-bit upsets: **MICRO'21** (doi 10.1145/3466752.3480111; V100
+HBM2, ChipIR) — 31.5% of events multi-bit, ~75% byte-contiguous. ECC as SDC→DUE redistribution:
+**NSREC'21** (arXiv 2108.00554) — ECC-on cuts SDC up to 21× but raises DUE up to 13.7× (DUE:SDC
+2.2–2.7×). Full per-parameter verdict table in `docs/research/beam-calibration-audit.md`.
 
 > ⚠️ **Scope of the "within 5×" agreement (review item 15).** "Demystifying GPU Reliability" (2021)
 > found beam and simulation agree within ~5× — but that validation is for **SASS/instruction-level**
