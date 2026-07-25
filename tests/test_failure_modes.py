@@ -292,8 +292,11 @@ def test_upsets_concentrate_in_the_saa(tiny_workload):
     upsets partway through an orbit, which biases its own SAA share. Pooling
     measures the environment rather than any one run's lifetime.
     """
+    # Pooled across enough seeds to stay well-powered: the MBU cluster model
+    # makes runs die sooner (correlated corruption is more lethal), so each run
+    # delivers fewer EVENTS before death -- more seeds keeps the pool large.
     total, in_saa = 0, 0
-    for seed in range(1, 7):
+    for seed in range(1, 13):
         w = tiny_workload(seed=seed)
         env = make_env(w, rate=LETHAL_RATE, seed=seed, steps=400, orbits=4.0)
         train(w, cfg=TrainConfig(steps=400), env=env)

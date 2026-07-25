@@ -264,6 +264,98 @@ def test_inject_returns_none_with_no_targets():
 
 
 # --------------------------------------------------------------------- #
+# Multi-bit-upset (MBU) cluster model -- MICRO'21 (M4c)
+# --------------------------------------------------------------------- #
+
+
+def test_multi_bit_share_matches_micro21(stepped_workload):
+    """31.5% of upset EVENTS are multi-bit (MICRO'21 anchor)."""
+    from orbital_runtime.inject.memory import MBU_SHARE
+
+    w = stepped_workload
+    inj = MemoryInjector(w.model, w.optimizer)
+    rng = stream(101, STREAM_MEMORY)
+    n = 8000
+    events = [inj.inject_event(rng) for _ in range(n)]
+    assert all(e is not None for e in events)
+    multi = sum(1 for e in events if e.multi_bit)
+    frac = multi / n
+    # Binomial sigma ~ sqrt(p(1-p)/n) ~ 0.0052; 4 sigma ~ 0.021.
+    assert abs(frac - MBU_SHARE) < 0.025, f"multi-bit share {frac:.3f} != {MBU_SHARE}"
+
+
+def test_multi_bit_events_are_mostly_byte_contiguous(stepped_workload):
+    """~75% of MBUs are byte-contiguous (MICRO'21)."""
+    from orbital_runtime.inject.memory import MBU_CONTIGUOUS_SHARE
+
+    w = stepped_workload
+    inj = MemoryInjector(w.model, w.optimizer)
+    rng = stream(202, STREAM_MEMORY)
+    multis = [
+        e for e in (inj.inject_event(rng) for _ in range(12000)) if e and e.multi_bit
+    ]
+    assert len(multis) > 2000
+    contig = sum(1 for e in multis if e.contiguous)
+    frac = contig / len(multis)
+    assert abs(frac - MBU_CONTIGUOUS_SHARE) < 0.04, f"contiguous share {frac:.3f}"
+
+
+def test_single_bit_events_flip_exactly_one_bit(stepped_workload):
+    w = stepped_workload
+    inj = MemoryInjector(w.model, w.optimizer)
+    rng = stream(303, STREAM_MEMORY)
+    for e in (inj.inject_event(rng) for _ in range(500)):
+        if not e.multi_bit:
+            assert e.size == 1
+            assert not e.contiguous
+
+
+def test_multi_bit_clusters_have_size_at_least_two_and_share_one_element(stepped_workload):
+    from orbital_runtime.inject.memory import MBU_MAX_CLUSTER
+
+    w = stepped_workload
+    inj = MemoryInjector(w.model, w.optimizer)
+    rng = stream(404, STREAM_MEMORY)
+    seen_multi = 0
+    for e in (inj.inject_event(rng) for _ in range(3000)):
+        if e.multi_bit:
+            seen_multi += 1
+            assert 2 <= e.size <= MBU_MAX_CLUSTER
+            # All flips in one element (name + index): a word-local cluster.
+            assert len({(f.name, f.index) for f in e.flips}) == 1
+            # Distinct bit positions.
+            assert len(set(e.bit_positions)) == e.size
+    assert seen_multi > 500
+
+
+def test_contiguous_cluster_bits_are_adjacent(stepped_workload):
+    w = stepped_workload
+    inj = MemoryInjector(w.model, w.optimizer)
+    rng = stream(505, STREAM_MEMORY)
+    checked = 0
+    for e in (inj.inject_event(rng) for _ in range(4000)):
+        if e.multi_bit and e.contiguous:
+            bits = e.bit_positions
+            assert bits == list(range(bits[0], bits[0] + len(bits)))
+            checked += 1
+    assert checked > 200
+
+
+def test_inject_event_is_deterministic(tiny_workload):
+    def run():
+        w = tiny_workload()
+        inj = MemoryInjector(w.model, w.optimizer)
+        rng = stream(4242, STREAM_MEMORY)
+        return [
+            (e.primary.name, tuple(e.bit_positions), e.multi_bit, e.contiguous)
+            for e in (inj.inject_event(rng) for _ in range(40))
+            if e is not None
+        ]
+
+    assert run() == run()
+
+
+# --------------------------------------------------------------------- #
 # Determinism (PLAN.md design rule 3)
 # --------------------------------------------------------------------- #
 

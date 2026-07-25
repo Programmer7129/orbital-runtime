@@ -20,6 +20,30 @@ failure modes for free: a strike on a high exponent bit (fp32 bits 30..23)
 explodes the value into NaN/Inf, while a strike on a low mantissa bit
 perturbs it imperceptibly and drives silent divergence (PLAN.md M1).
 
+Multi-bit upsets (MBUs) -- M4c, cited
+-------------------------------------
+A pure independent-single-bit model UNDERSTATES correlated corruption and
+overstates ECC effectiveness (an ionizing track deposits charge across
+several adjacent cells, and SEC-DED corrects single-bit but not multi-bit
+errors). The beam-data audit (docs/research/beam-calibration-audit.md) pins
+this quantitatively from MICRO'21 (doi 10.1145/3466752.3480111; V100 HBM2,
+ChipIR neutron beam):
+
+    * 31.5% of upset EVENTS are multi-bit (MBU_SHARE)
+    * ~75% of those are byte-contiguous (MBU_CONTIGUOUS_SHARE)
+    * the broadest single event hit 5,359 memory entries
+
+So an upset EVENT is no longer one bit -- it is a CLUSTER. We model the
+common small-cluster regime: 68.5% single-bit, 31.5% multi-bit, of which 75%
+flip a contiguous run of adjacent bits (one word) and 25% flip a scattered
+set. The large-cluster tail (up to thousands of entries) is a disclosed,
+UNMODELED extreme -- our cluster caps at `MBU_MAX_CLUSTER` bits within one
+element. Conditions caveat: MICRO'21 is neutron / HBM2; our injector is
+dtype-generic fp32, so the share is a cited anchor, not a device-matched
+measurement. `inject()` remains a single-bit primitive (used by the
+sensitivity tests); `inject_event()` is the physical, clustered event that
+the radiation environment dispatches.
+
 Device-agnostic (PLAN.md design rule 1): verified on CPU and MPS for fp32,
 fp16 and bf16. No CUDA-only primitives.
 """
@@ -46,6 +70,23 @@ _INT_VIEW_DTYPE: dict[torch.dtype, torch.dtype] = {
 
 KIND_PARAM = "param"
 KIND_OPTIMIZER = "optimizer"
+
+# --- Multi-bit-upset (MBU) cluster model, MICRO'21 (see module docstring) ---
+# Fraction of upset EVENTS that flip more than one bit.
+MBU_SHARE = 0.315
+# Of the multi-bit events, the fraction that are byte-contiguous (a run of
+# adjacent bits) rather than scattered.
+MBU_CONTIGUOUS_SHARE = 0.75
+# Geometric-tail parameter for the multi-bit cluster size: size = 1 +
+# Geometric(p), so size >= 2 with mean 1 + 1/p. p=0.6 -> mean ~2.67 bits, a
+# small-cluster regime. MICRO'21 gives the share + contiguity but not a full
+# size histogram, so this is the deliberately-modest modeled distribution; the
+# large-cluster tail is disclosed as unmodeled.
+MBU_SIZE_GEOMETRIC_P = 0.6
+# Cap on modeled cluster size (bits within one element). A byte is 8 bits;
+# capping here keeps a contiguous cluster inside a single word, which is the
+# regime we model. The thousands-of-entries tail is out of scope.
+MBU_MAX_CLUSTER = 8
 
 
 def bits_of(t: Tensor) -> int:
@@ -102,6 +143,58 @@ class Flip:
             "value_before": self.value_before,
             "value_after": self.value_after,
             "nonfinite": self.became_nonfinite,
+        }
+
+
+@dataclass(frozen=True)
+class UpsetCluster:
+    """One upset EVENT: a cluster of 1+ bit flips in a single element.
+
+    A single-bit event has `size == 1`; a multi-bit (MBU) event flips several
+    bits of the same word. All flips are on the same (name, index) element, so
+    the net element value is `flips[-1].value_after` (flips are applied in
+    order, each XOR compounding on the last).
+    """
+
+    flips: list[Flip]
+    multi_bit: bool
+    contiguous: bool
+
+    @property
+    def size(self) -> int:
+        return len(self.flips)
+
+    @property
+    def primary(self) -> Flip:
+        return self.flips[0]
+
+    @property
+    def net_value_after(self) -> float:
+        return self.flips[-1].value_after
+
+    @property
+    def became_nonfinite(self) -> bool:
+        return not math.isfinite(self.net_value_after)
+
+    @property
+    def bit_positions(self) -> list[int]:
+        return [f.bit for f in self.flips]
+
+    def as_record(self) -> dict:
+        p = self.flips[0]
+        return {
+            "name": p.name,
+            "target_kind": p.kind,
+            "index": p.index,
+            "bit": p.bit,  # the primary (first) struck bit
+            "dtype": p.dtype,
+            "value_before": p.value_before,
+            "value_after": self.net_value_after,
+            "nonfinite": self.became_nonfinite,
+            "cluster_size": self.size,
+            "multi_bit": self.multi_bit,
+            "contiguous": self.contiguous,
+            "bits": self.bit_positions,
         }
 
 
@@ -256,29 +349,76 @@ class MemoryInjector:
     # Injection
     # ------------------------------------------------------------------ #
 
-    def inject(self, rng: np.random.Generator) -> Flip | None:
-        """Strike one uniformly-random resident bit. None if no targets."""
+    def _choose_bit(self, rng: np.random.Generator) -> tuple[Target, int, int] | None:
+        """Pick a (target, element index, primary bit), uniform over all bits."""
         targets = self.targets()
         if not targets:
             return None
-
         weights = np.array([t.bits for t in targets], dtype=np.float64)
         total = weights.sum()
         if total <= 0:
             return None
         chosen = targets[int(rng.choice(len(targets), p=weights / total))]
-
         index = int(rng.integers(0, chosen.tensor.numel()))
         width = chosen.tensor.element_size() * 8
         bit = int(rng.integers(0, width))
+        return chosen, index, bit
 
-        before, after = flip_bit(chosen.tensor, index, bit)
+    def _flip_at(self, target: Target, index: int, bit: int) -> Flip:
+        before, after = flip_bit(target.tensor, index, bit)
         return Flip(
-            name=chosen.name,
-            kind=chosen.kind,
+            name=target.name,
+            kind=target.kind,
             index=index,
             bit=bit,
-            dtype=str(chosen.tensor.dtype).replace("torch.", ""),
+            dtype=str(target.tensor.dtype).replace("torch.", ""),
             value_before=before,
             value_after=after,
         )
+
+    def inject(self, rng: np.random.Generator) -> Flip | None:
+        """Strike one uniformly-random resident bit. None if no targets.
+
+        The single-bit primitive: used by the ABFT sensitivity tests and as
+        the building block. The radiation environment dispatches
+        `inject_event`, which applies the MBU cluster model on top of this.
+        """
+        pick = self._choose_bit(rng)
+        if pick is None:
+            return None
+        return self._flip_at(*pick)
+
+    def inject_event(self, rng: np.random.Generator) -> UpsetCluster | None:
+        """Strike one upset EVENT -- a cluster of 1+ bits (MICRO'21 MBU model).
+
+        68.5% of events are single-bit; 31.5% are multi-bit, of which 75% flip
+        a contiguous run of adjacent bits in one word and 25% a scattered set.
+        The primary bit is chosen uniformly (as `inject`), then the event type
+        and cluster geometry are drawn. All flips land on the same element.
+        """
+        pick = self._choose_bit(rng)
+        if pick is None:
+            return None
+        target, index, bit = pick
+        width = target.tensor.element_size() * 8
+
+        multi_bit = bool(rng.random() < MBU_SHARE)
+        if not multi_bit:
+            return UpsetCluster([self._flip_at(target, index, bit)], False, False)
+
+        size = min(1 + int(rng.geometric(MBU_SIZE_GEOMETRIC_P)), MBU_MAX_CLUSTER, width)
+        contiguous = bool(rng.random() < MBU_CONTIGUOUS_SHARE)
+        if contiguous:
+            # A run of `size` adjacent bits anchored at the primary bit, slid
+            # to fit inside the word.
+            start = min(max(bit, 0), width - size)
+            bits = list(range(start, start + size))
+        else:
+            # `size` distinct bits scattered across the word (the primary bit
+            # included, so the event is never smaller than intended).
+            others = [b for b in range(width) if b != bit]
+            extra = rng.choice(len(others), size=size - 1, replace=False)
+            bits = sorted([bit] + [others[int(i)] for i in extra])
+
+        flips = [self._flip_at(target, index, b) for b in bits]
+        return UpsetCluster(flips, multi_bit=True, contiguous=contiguous)

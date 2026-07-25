@@ -85,9 +85,11 @@ SCHEDULE_HEADROOM = 3.0
 class InjectionStats:
     """Running totals, reported in the demo banner."""
 
-    flips: int = 0
+    flips: int = 0  # upset EVENTS delivered (one per scheduled arrival)
     flips_in_saa: int = 0
     flips_nonfinite: int = 0
+    bit_flips: int = 0  # total BITS flipped (>= flips once MBUs land)
+    multi_bit_events: int = 0  # events that flipped more than one bit (MBU)
     activation_hits: int = 0
     sefis: int = 0
     xids: int = 0
@@ -98,6 +100,8 @@ class InjectionStats:
             "flips": self.flips,
             "flips_in_saa": self.flips_in_saa,
             "flips_nonfinite": self.flips_nonfinite,
+            "bit_flips": self.bit_flips,
+            "multi_bit_events": self.multi_bit_events,
             "activation_hits": self.activation_hits,
             "sefis": self.sefis,
             "xids": self.xids,
@@ -260,14 +264,17 @@ class RadiationEnvironment:
                 )
             return
 
-        flip = self.memory.inject(self._rng_mem)
-        if flip is None:
+        cluster = self.memory.inject_event(self._rng_mem)
+        if cluster is None:
             return
 
-        self.stats.flips += 1
+        self.stats.flips += 1  # one upset EVENT
         self.stats.flips_in_saa += int(ev.in_saa)
-        self.stats.flips_nonfinite += int(flip.became_nonfinite)
-        self.stats.bit_histogram[flip.bit] = self.stats.bit_histogram.get(flip.bit, 0) + 1
+        self.stats.flips_nonfinite += int(cluster.became_nonfinite)
+        self.stats.bit_flips += cluster.size
+        self.stats.multi_bit_events += int(cluster.multi_bit)
+        for b in cluster.bit_positions:
+            self.stats.bit_histogram[b] = self.stats.bit_histogram.get(b, 0) + 1
 
         if self.telemetry:
             self.telemetry.emit(
@@ -275,10 +282,12 @@ class RadiationEnvironment:
                 step=step,
                 t_sim=ev.t,
                 in_saa=ev.in_saa,
-                **flip.as_record(),
+                **cluster.as_record(),
             )
 
-        xid_ev = self.xid.on_flip(ev.t, self._rng_xid)
+        # A multi-bit event defeats SEC-DED -> uncorrectable under ECC. This is
+        # what drives the SDC->DUE redistribution in the Xid stream (M4c).
+        xid_ev = self.xid.on_flip(ev.t, self._rng_xid, multi_bit=cluster.multi_bit)
         if xid_ev is not None:
             self.stats.xids += 1
             if self.telemetry:

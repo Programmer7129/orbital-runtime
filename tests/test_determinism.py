@@ -10,6 +10,8 @@ that produces the headline overhead number is not a controlled experiment.
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from orbital_runtime.inject.injector import RadiationEnvironment
@@ -36,6 +38,19 @@ def make_env(workload, *, rate: float, seed: int, steps: int, orbits: float = 2.
     )
 
 
+def _losses_bit_identical(a: list[float], b: list[float]) -> bool:
+    """Exact equality, but NaN-aware.
+
+    With the MBU cluster model an event can flip bit 30 in a correlated
+    cluster, so a seed that used to drift now NaNs -- and `nan != nan` would
+    make two BIT-IDENTICAL dying runs compare unequal. Determinism holds for
+    dying runs too; this is the honest way to assert it.
+    """
+    if len(a) != len(b):
+        return False
+    return all(x == y or (math.isnan(x) and math.isnan(y)) for x, y in zip(a, b))
+
+
 def test_identical_seeds_produce_identical_runs(tiny_workload):
     """Same seed, same everything -- to the last bit of the loss."""
 
@@ -47,7 +62,7 @@ def test_identical_seeds_produce_identical_runs(tiny_workload):
 
     a = run()
     b = run()
-    assert a[0] == b[0]  # exact float equality, not approx
+    assert _losses_bit_identical(a[0], b[0])  # exact, NaN-aware
     assert a[1:] == b[1:]
 
 
