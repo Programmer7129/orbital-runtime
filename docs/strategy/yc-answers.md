@@ -383,28 +383,34 @@ lifetime wear. Both are hardware/shielding, not the software layer. Knowing exac
 where the layer ends is a strength signal.
 
 **Same idea as a previous batch / why did you pivot + what did you learn?**
-Yes. A few batches ago I applied with Vrin, a "cognitive core" for enterprises: a
-retrieval layer that enriched data at ingestion time, wiring up connections between
-entities the way a person does when they re-read and reflect on something, so hard
-multi-hop questions became answerable. I took it a long way and open-sourced the result,
+Yeah. A few batches ago I applied with Vrin, which was basically a "cognitive core" for
+enterprises. The idea was to make retrieval smarter by enriching the data as it came in,
+building the connections between entities the way you do when you keep coming back to
+something you've read and slowly see how it all links up, so the really hard multi-hop
+questions actually become answerable. I took it pretty far and open-sourced it as
 Engram, a local-first RAG that matches field state-of-the-art on MuSiQue, one of the
-hardest multi-hop QA benchmarks. Giving the community something that useful is one of the
-things I'm proudest of, and what Vrin gave me back was everything I learned building it.
+hardest multi-hop benchmarks out there. Putting something that useful out for the
+community is one of the things I'm most proud of, and the real payoff was everything I
+learned building it.
 
-Two lessons stood out. First, the software itself was commoditizing. With enough agents,
-skills, and a good harness the capability works out of the box, exactly what Gary Tan
-demonstrated with the G-Brain and G-Stack; frontier labs paired with consulting firms
-(OpenAI and Anthropic with the Deloittes and Morgan Stanleys of the world) are absorbing
-custom enterprise AI with distribution no independent software product could match, and
-even product companies in that space are sliding into becoming services businesses.
-Second, in that world the only durable edge is either instant distribution or a problem
-so specific to you that no one can replicate your right to solve it.
+The biggest lesson was that software on its own doesn't protect you anymore. With enough
+agents, a few good skills, and a decent harness, most of this works out of the box now,
+which is exactly what Gary Tan showed with the G-Brain and G-Stack. And the frontier labs
+are teaming up with the big consulting firms (OpenAI and Anthropic with the Deloittes and
+Morgan Stanleys) to build enterprise AI for people directly, with distribution I could
+never match on my own. So even good product companies there are quietly turning into
+services businesses.
 
-That second lesson is the thesis behind Steadstar. Radiation fault-tolerance for orbital
-GPUs sits at an intersection of AI infrastructure and error-correction physics that is
-genuinely mine, in a market with a hard, measurable failure and a countable set of named
-buyers. That is the opposite of Vrin's diffuse, crowded space, and exactly the kind of
-problem I learned to look for.
+That left me with two rules. One, if the software is easy to copy, go where you can get
+in early and be one of the first real providers, before it turns into a crowd. Two, pick
+a problem specific enough to you that copying you doesn't actually help anyone.
+
+Steadstar follows both. The orbital-compute market is just forming and there's no
+standard player for the reliability layer yet, so I can genuinely be early here in a way
+you just can't be in enterprise RAG anymore. And keeping computation correct through
+radiation sits right where my two things meet, AI infrastructure and error-correction
+physics, in a market with a hard, measurable failure and a small, nameable set of buyers.
+It's pretty much the opposite of where Vrin was.
 
 ## Remaining questions — to draft one by one
 Cofounder question · founder video script · company URL · location · full-time
