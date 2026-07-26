@@ -232,6 +232,36 @@ of what's planned, the reliability layer on top of it is a nine-figure business.
 
 (Full ICP value/pricing research: docs/strategy/icp-value-gtm.md)
 
+**Why this idea? Domain expertise? How do you know people need it?**
+Why I picked it: it's where my two obsessions meet. I'm an AI-infrastructure engineer
+by profession, and physics is what I've chased on my own time for years. I earned a
+Silver honour in the International Astronomy and Astrophysics Competition, and I
+studied quantum-computer hardware and quantum error correction through TU Delft's
+courses, where I first got pulled into the problem of protecting fragile computation
+from physical errors. So when I watched everyone race to put commercial GPUs in orbit,
+the part that grabbed me wasn't the hardware or the launch, it was that nobody had
+solved keeping the computation correct through radiation. That's fundamentally a
+physics problem solved in software, my exact intersection.
+
+Domain expertise: I'm a CS graduate from UC Davis with a real physics foundation, a
+working AI-infrastructure engineer, and I've taken research-stage ideas to production
+before, so I know how to turn something hard into something customers can use. I
+calibrated this fault model to NASA and flight data and validated it on a real GPU
+myself. I'm honest that I'm not the deep experimental radiation-effects specialist yet,
+that's the co-founder I'm recruiting, but I have more than enough physics and systems
+depth to build this, judge that scientist's work, and lead the company.
+
+How I know people need it: they're already doing it the hard way. Google beam-tested
+its TPUs and published the data. Starcloud flew an H100 and hand-rolled its own
+mitigation. Axiom's ISS node exists to answer "does COTS silicon survive orbit?",
+they're spending launch dollars on the question I answer on the ground. Orbital's
+entire 2027 mission is to test GPU radiation tolerance. Sophia is building
+fault-tolerant software in-house; Madari has no radiation story at all. Every serious
+operator is either rebuilding this themselves or paying to learn it the expensive way.
+That's demonstrated need, not a guess. And it follows the cloud pattern: everyone built
+their own early on, then outsourced to a platform as the surface grew. I'm building
+that platform.
+
 **FRAMING RULE for competitors/moat (NEVER say "they can't build it"):** Any operator
 can build a v1; several hand-roll one today. The claim is that they will BUY not
 BUILD, via the cloud-consolidation dynamic. Radiation reliability is undifferentiated
