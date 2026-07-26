@@ -267,6 +267,35 @@ the undifferentiated heavy lifting of orbital compute: every operator is rebuild
 same fault-tolerance stack instead of working on their satellites and their models. I'm
 building the platform they outsource it to.
 
+**Who are your competitors? What do you understand that they don't?**
+There's no vendor-neutral company doing exactly this yet, so the real competition is
+three things, plus one theoretical.
+
+First, and the one I take most seriously: in-house teams. Starcloud, Sophia, and
+Aethero each hand-roll their own fault-tolerance stack. That's the build-it-yourself
+competitor.
+
+Second, Aethero, which bundles radiation mitigation with its own Jetson hardware, but
+only protects Aethero's boxes, not the H100s and TPUs everyone else flies.
+
+Third, the status quo: rad-hardened silicon, which "competes" by avoiding the problem
+at orders of magnitude higher cost and a fraction of the performance. Operators are
+escaping it, not adopting it.
+
+The theoretical one is NVIDIA. They could ship a "space mode," but they never built the
+fault-tolerant-training layer even for the far larger terrestrial market, that came
+from ByteDance, Meta, Google, and academia. NVIDIA ships primitives and buys the
+ecosystem leader when a layer matters (Mellanox, Run:ai). I plan to be that leader.
+
+What I understand that they don't: this isn't a hardware problem or a one-time software
+fix, it's a data problem. What actually protects a workload is knowing exactly how each
+chip fails under radiation, and that data only comes from beam characterization,
+expires every chip generation, and compounds across every customer's chips and fleets.
+An operator building in-house gets one satellite's worth and redoes it each generation.
+A neutral platform accumulates it across the whole market. That's the undifferentiated
+heavy lifting of orbital compute, and it consolidates onto a platform the way cloud
+did. The operators building it themselves are in the pre-AWS phase of this market.
+
 **FRAMING RULE for competitors/moat (NEVER say "they can't build it"):** Any operator
 can build a v1; several hand-roll one today. The claim is that they will BUY not
 BUILD, via the cloud-consolidation dynamic. Radiation reliability is undifferentiated
