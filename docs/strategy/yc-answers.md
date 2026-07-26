@@ -258,9 +258,14 @@ they're spending launch dollars on the question I answer on the ground. Orbital'
 entire 2027 mission is to test GPU radiation tolerance. Sophia is building
 fault-tolerant software in-house; Madari has no radiation story at all. Every serious
 operator is either rebuilding this themselves or paying to learn it the expensive way.
-That's demonstrated need, not a guess. And it follows the cloud pattern: everyone built
-their own early on, then outsourced to a platform as the surface grew. I'm building
-that platform.
+That's demonstrated need, not a guess. And it follows the cloud pattern. Before AWS,
+every company ran its own servers, because there was no alternative, and engineers
+spent most of their time on infrastructure that had nothing to do with their actual
+product. Amazon named that "undifferentiated heavy lifting" and built a platform to
+take it off their hands, and the market consolidated onto it. Radiation reliability is
+the undifferentiated heavy lifting of orbital compute: every operator is rebuilding the
+same fault-tolerance stack instead of working on their satellites and their models. I'm
+building the platform they outsource it to.
 
 **FRAMING RULE for competitors/moat (NEVER say "they can't build it"):** Any operator
 can build a v1; several hand-roll one today. The claim is that they will BUY not
