@@ -389,11 +389,12 @@ entities the way a person does when they re-read and reflect on something, so ha
 multi-hop questions became answerable. I made real progress, then moved on for two
 reasons. The space flooded within months, everyone building a "company brain," and
 without existing distribution it was very hard to break in. More fundamentally, the
-software itself was commoditizing: with enough agents, skills, and a good harness the
-capability works out of the box, and frontier labs paired with consulting firms (OpenAI
-and Anthropic with the Deloittes and Morgan Stanleys of the world) are absorbing custom
-enterprise AI with distribution I could not match. Product companies there are quietly
-becoming services businesses.
+software itself was commoditizing. With enough agents, skills, and a good harness the
+capability works out of the box, exactly what Gary Tan demonstrated with the G-Brain and
+G-Stack, and frontier labs paired with consulting firms (OpenAI and Anthropic with the
+Deloittes and Morgan Stanleys of the world) are absorbing custom enterprise AI with
+distribution I could not match. Product companies there are quietly becoming services
+businesses.
 
 The lesson became the thesis for Steadstar: when software is no longer the moat, the
 only durable edge is either instant distribution or a problem so specific to you that no
