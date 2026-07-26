@@ -62,7 +62,66 @@ clusters — they ship primitives and buy ecosystem winners (Run:ai). Our plan i
 the winner worth buying, holding the cross-chip beam data and flight heritage they
 can't shortcut."
 
+## SUBMITTED ANSWERS — Fall 2026 form (name: Steadstar; SteadStar vs Steadstar TBD)
+
+**Company name:** Steadstar
+**Describe in 50 chars:** Radiation fault-tolerance for GPUs in orbit  (43 chars)
+
+**What is your company going to make?**
+Steadstar is a software runtime that keeps commercial GPUs computing through
+radiation in orbit.
+
+Datacenter GPUs are now being launched into space. The first NVIDIA H100 reached
+orbit in November 2025, with Google and SpaceX following. Up there, cosmic radiation
+strikes the chip mid-computation, and it fails in several distinct ways. A single
+flipped bit can turn a weight into infinity and NaN the whole run. A multi-bit hit
+slips past error-correcting memory. The chip hangs or reboots outright. And in the
+worst case, the run finishes looking completely normal while quietly converging to a
+worse model, with nothing to flag it. Error-correcting memory catches only some
+single-bit flips; nothing protects the job itself, so today each operator hand-rolls
+its own fix or goes without.
+
+Our runtime wraps an unmodified PyTorch job. It detects corruption in three tiers
+(cheap guards on the loss and gradients, checksums on the matrix multiplies, and the
+GPU's own error counters), catching the silent errors as well as the loud ones, then
+recovers by rolling back to a checkpoint and replaying, whether the fault was a bad
+number, a NaN, or a full crash.
+
+It's already built and validated: on a rented datacenter GPU at true orbital
+radiation rates, an unprotected training run dies while the identical protected run
+completes, at ~1.6% detection overhead. Every constant is calibrated to NASA and
+flight data. Next, we validate the fault model against a proton beam to measure how
+each GPU generation actually fails, proprietary data that compounds per chip and per
+customer.
+
+**How far along are you?**
+Steadstar is a working, validated MVP.
+
+The runtime is built end to end: calibrated fault injection, three-tier detection,
+and orbit-aware checkpoint/recovery, with a 288-test suite and a one-command
+reproducible demo. On a rented NVIDIA L4 datacenter GPU at true orbital radiation
+rates, an unprotected training run dies while the identical protected run completes,
+at ~1.6% detection overhead.
+
+We've been deliberate about credibility. Every physics constant is calibrated to
+NASA, CREME96, and flight data. We commissioned two adversarial reviews (methodology
+and reproducibility) and fixed or disclosed every finding. And we calibrated the
+fault model against published proton-beam data from Google's TPU tests and the
+radiation-effects literature.
+
+The immediate next steps are a proton-beam validation campaign to measure how each
+GPU generation actually fails, and design-partner outreach to the second-tier
+operators (Sophia Space, Axiom, and others) who can't build this in-house.
+
+**Interview-only honest boundary (do NOT put on website/app, but say if asked
+"what about latchup and total dose?"):** We handle single-event upsets, multi-bit
+upsets, functional interrupts/crashes, and silent corruption. Latchup (SEL) is a
+hardware short-circuit fixed by a power cycle; total ionizing dose (TID) is lifetime
+wear. Both are hardware/shielding, not our software layer. Knowing exactly where our
+layer ends is a strength signal.
+
 ## Remaining questions — to draft one by one
-Cofounder question · founder video script · company name + 50-char + "what will you
-make" · location · progress/full-time · tech stack + AI tools · why this idea/domain
-expertise/how do you know need · make money/market size · other ideas · why YC.
+Cofounder question · founder video script · company URL · location · full-time
+duration · tech stack + AI tools · why this idea/domain expertise/how do you know
+need · competitors (NVIDIA argument done, cited) · make money/market size · other
+ideas · why YC · users?(No) · revenue?(No) · fundraising?
