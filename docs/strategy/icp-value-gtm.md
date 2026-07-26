@@ -92,6 +92,15 @@ Method (accelerator "bottom-up TAM"): for each revenue stream, ICP x annual cont
 value x count -> TAM; then capture % -> company size. Beats top-down "1% of a big
 market" because it disciplines the unit price (see the pricing correction below).
 
+DON'T CONFLATE THREE NUMBERS (the beachhead is NOT the ceiling):
+- TAM (whole market): everyone who flies GPUs in orbit -> ~18,600 DC-satellites /
+  ~1.5M+ GPUs by 2035 (ABI), growing.
+- Beachhead (serviceable NOW): ~15 serious operators flying COTS GPUs by 2027.
+- SOM (what we capture): a deliberately LOW % (use ~20%) that STILL yields a $B company.
+The runtime business scales with GPU COUNT, not operator count, so we are not capped at
+15. Equations, inline: assessment 15 x $200k = ~$3M/yr; runtime 1.5M GPUs x $2k =
+~$3B/yr; capture 0.20 x $3B = ~$600M/yr revenue.
+
 **Stream A — pre-launch assessment (near-term wedge, 2027-2029)**
 - ICP: operators flying COTS GPUs (~15 serious ones today).
 - ACV: ~$150-250k/operator/yr (campaign-based; re-run per chip generation / per mission).

@@ -226,15 +226,25 @@ Pricing follows value. A node costs $50-60M, a single training run $50M-$1B, and
 orbit you can't re-run it, so a reliability license is a rounding error against the
 loss it prevents.
 
-On size, bottom-up. The wedge today is ~15 serious operators paying for pre-launch
-assessments, call it ~$200k each a year, low single-digit millions. The scale is the
-runtime license, and it tracks GPUs in orbit. Independent forecasts put orbital compute
-near 1.5 GW by 2035 (ABI Research), on the order of a million-plus datacenter GPUs at
-Starcloud's ~1M-H100s-per-gigawatt, inside an in-orbit datacenter market growing from
-~$1.8B in 2029 to ~$39B by 2035. Price the reliability license at a few percent of what
-each GPU's compute is worth, and it's a multi-billion-dollar layer on top of that
-market. As the neutral standard operators consolidate onto, capturing even a quarter of
-it is a billion-dollar-plus company.
+On size, here's the math, bottom-up.
+
+Two streams. The wedge is pre-launch assessments. The ~15 operators I can land first
+aren't the market, they're the beachhead, the serious teams flying COTS GPUs by 2027.
+At ~$200k each a year: 15 x $200k = ~$3M. Small on purpose, it lands the partners and
+harvests their data.
+
+The business is the runtime license, and it scales with GPUs in orbit, not operator
+count: GPUs x license-per-GPU-year. Forecasts put orbital compute near 1.5 GW by 2035
+(ABI Research), and at Starcloud's ~1M H100-equivalents per gigawatt that's ~1.5M GPUs.
+Each GPU's compute is worth ~$26k a year (the ~$39B 2035 datacenter market spread across
+them), so a reliability license at well under a tenth of that is ~$2k per GPU per year.
+That's 1.5M x $2k = ~$3B a year in reliability spend, and multiples of that if the
+gigawatt-scale plans land (Starcloud's 5 GW, its 10 GW Crusoe deal, Anthropic's
+multi-GW interest).
+
+I don't need most of it. As the neutral standard operators consolidate onto, capturing
+even 20% is 0.20 x $3B = ~$600M a year at software margins, a billion-dollar-plus
+company on a deliberately conservative slice of a market that's barely started.
 
 (Full ICP value/pricing research: docs/strategy/icp-value-gtm.md. Bottom-up TAM model +
 sources: same file, "BOTTOM-UP TAM" section.)
