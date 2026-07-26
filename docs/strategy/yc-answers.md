@@ -157,9 +157,42 @@ specialist, which is the co-founder gap.)*
 
 **How long have you been working on this? How much full-time?**
 About four weeks, and all of it full-time. I started at the beginning of July 2026
-and have worked on it every day since, which is how it went from an idea to a
-validated, GPU-tested MVP this quickly. I'm solo, and Steadstar is what I'm going
-all-in on, 100% full-time from here.
+and have worked on it every day since. That solo, full-time month is how it went from
+an idea to a validated, GPU-tested MVP this fast. I'm now bringing on a co-founder to
+run the science, and Steadstar is where I'm 100% committed from here.
+
+**Who writes code / was any done by a non-founder?**
+All of it is me. The system design, the physics model, the runtime, the tests, the
+GPU validation, that's all my work, and no other person has written any of it. No
+contractors, no employees, no co-founder yet, and no code carried over from anywhere
+else.
+
+I should be direct about how I build: I use AI heavily. I direct Claude models as
+coding agents (Fable 5 orchestrating, Opus 4.8 building) against specs I write, and I
+verify everything myself, including two adversarial AI reviews I ran against the
+codebase that caught real bugs I fixed. So the code is AI-implemented but
+founder-designed, directed, and verified. The only human on this product is me.
+
+**Tech stack (incl. AI models/tools)?**
+The product is Python and PyTorch. The runtime wraps an unmodified PyTorch training
+or inference job: a custom Poisson bit-flip injector calibrated to orbital rates,
+three-tier detection (loss and gradient guards, checksums on the matrix multiplies,
+and the GPU's own hardware error counters), and checkpoint/recovery built on PyTorch
+Distributed Checkpoint. There's a 288-test pytest suite, and I validate on rented
+NVIDIA GPUs on AWS, an L4 for the real-radiation runs. The thesis site is Next.js and
+Tailwind with KaTeX for the math.
+
+The system design is entirely mine: the architecture, the physics model, and how
+injection, detection, and recovery fit together. I ideated and designed all of it
+before it was built. Where I move fast is execution, through an unusually deep AI
+workflow in Claude Code. Claude Fable 5 runs as the harness and orchestrator, holding
+the plan and dispatching the work; Opus 4.8 is the workforce doing the heavy
+building; and I distribute development across parallel agent teams. I write the specs,
+the agents implement against them, and I verify everything myself, including two
+adversarial AI reviews that caught real bugs I then fixed. That setup is how one
+person went from an idea to a GPU-validated MVP in four weeks. The thinking, the
+system design, the physics, and the verification are mine; the AI is the execution
+engine.
 
 **FRAMING RULE for competitors/moat (NEVER say "they can't build it"):** Any operator
 can build a v1; several hand-roll one today. The claim is that they will BUY not
