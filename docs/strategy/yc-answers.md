@@ -282,19 +282,32 @@ Third, the status quo: rad-hardened silicon, which "competes" by avoiding the pr
 at orders of magnitude higher cost and a fraction of the performance. Operators are
 escaping it, not adopting it.
 
-The theoretical one is NVIDIA. They could ship a "space mode," but they never built the
-fault-tolerant-training layer even for the far larger terrestrial market, that came
-from ByteDance, Meta, Google, and academia. NVIDIA ships primitives and buys the
-ecosystem leader when a layer matters (Mellanox, Run:ai). I plan to be that leader.
+The theoretical one is NVIDIA. But NVIDIA's entire playbook is to build the foundational
+platform and let the ecosystem build on top of it. They created CUDA, then let others
+build the frameworks and the layers above it, PyTorch came from Meta, TensorFlow from
+Google, the fault-tolerant-training tooling from ByteDance, Meta, and academia. NVIDIA
+makes the silicon and the low-level platform; it has never built the application and
+reliability layers that run on top. Radiation reliability for orbital GPUs is exactly
+one of those layers. They'll make the chips that fly; I'm building the layer that keeps
+them computing in orbit.
 
 What I understand that they don't: this isn't a hardware problem or a one-time software
 fix, it's a data problem. What actually protects a workload is knowing exactly how each
 chip fails under radiation, and that data only comes from beam characterization,
 expires every chip generation, and compounds across every customer's chips and fleets.
-An operator building in-house gets one satellite's worth and redoes it each generation.
-A neutral platform accumulates it across the whole market. That's the undifferentiated
+An operator building in-house gets one satellite's worth and redoes it each generation;
+a neutral platform accumulates it across the whole market. That's the undifferentiated
 heavy lifting of orbital compute, and it consolidates onto a platform the way cloud
 did. The operators building it themselves are in the pre-AWS phase of this market.
+Every GPU that flies will need this layer, and I'm building it to be the platform the
+whole industry runs on.
+
+**RULES (investor-facing):** NEVER signal building-to-be-acquired. The Mellanox/Run:ai
+"NVIDIA buys the leader" point stays INTERNAL only, do not put it in any investor
+answer. Use the CUDA framing instead (NVIDIA builds the platform, ecosystem builds the
+layers). Interview: if pushed "NVIDIA contributes to PyTorch," answer "they optimize
+silicon for it but didn't originate it, Meta did; NVIDIA builds the platform, the
+ecosystem builds the layers, this is a layer."
 
 **FRAMING RULE for competitors/moat (NEVER say "they can't build it"):** Any operator
 can build a v1; several hand-roll one today. The claim is that they will BUY not
