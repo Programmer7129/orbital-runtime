@@ -197,18 +197,16 @@ engine.
 **Are people using your product?** No.
 
 **When will you have a version people can use?**
-The core already runs, anyone with a GPU can install it and reproduce the demo today.
-So the software isn't the blocker. What's left is getting it into an operator's hands
-and making it flight-trustworthy.
-
+The core already runs, anyone with a GPU can install it and reproduce the demo today,
+so the software itself isn't the blocker. What's left is getting it into an operator's
+hands, and because the runtime wraps an unmodified PyTorch job, integration is light.
 I can have a design partner running it against their own workload in the next few
-weeks, because the runtime wraps an unmodified PyTorch job, integration is light. The
-proton-beam validation, which turns "calibrated against published data" into
-"validated against our own beam results," is the longer pole, a few months out and
-gated mostly by beam scheduling.
+weeks.
 
-So: a version a design partner can test in weeks, and a flight-validated version
-they'd deploy in a few months.
+The proton-beam campaign runs in parallel, not as a gate. It's a validation and
+learning experiment: it confirms the fault model against real beam data and produces
+per-chip failure data no one else has, which sharpens the product and builds the moat.
+But nothing about it holds up a design partner starting now.
 
 **FRAMING RULE for competitors/moat (NEVER say "they can't build it"):** Any operator
 can build a v1; several hand-roll one today. The claim is that they will BUY not
