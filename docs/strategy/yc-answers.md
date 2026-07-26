@@ -128,6 +128,33 @@ specific GPU generation actually fails under radiation. Alongside it, I'm starti
 design-partner conversations with the operators about to hit this problem, Sophia
 Space, Axiom, and the ones coming after them.
 
+**Are you looking for a cofounder?**
+Yes. I've taken it this far solo, but I'm clear-eyed about the shape of team this
+needs.
+
+Physics isn't foreign to me, it's something I've loved for a long time. I earned a
+silver medal in the International Astronomy and Astrophysics Competition, and I've
+gone deep into the radiation-effects literature myself, that's how I calibrated the
+fault model to NASA and flight data and checked it against Google's beam results. So
+I can hold the physics, build the software around it, and tell good science from bad.
+
+But there's a real difference between reading the field and being the person who has
+spent years running proton-beam experiments and characterizing exactly how silicon
+fails. That depth is what takes us from calibrated-against-published-data to
+calibrated-against-our-own-beam-data, and it's what I want in a co-founder: a
+radiation-effects scientist to own the science as Chief Scientist, from a world like
+Vanderbilt's ISDE, NASA, or the UC Davis lab where I'm already planning the beam
+campaign.
+
+I'm searching actively now, including through YC's co-founder matching platform, and
+reaching out to people in that field directly. I'd rather find the right complement
+than stay solo by default.
+
+*(Founder physics thread to reuse in founder video + "why this idea/domain
+expertise": IAAC silver medal, self-taught the radiation-effects specifics, calibrated
+the model personally. Not a physics tourist; just not the deep experimental
+specialist, which is the co-founder gap.)*
+
 **How long have you been working on this? How much full-time?**
 About four weeks, and all of it full-time. I started at the beginning of July 2026
 and have worked on it every day since, which is how it went from an idea to a
