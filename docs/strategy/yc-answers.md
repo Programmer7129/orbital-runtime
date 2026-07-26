@@ -387,9 +387,9 @@ Yes. A few batches ago I applied with Vrin, a "cognitive core" for enterprises: 
 retrieval layer that enriched data at ingestion time, wiring up connections between
 entities the way a person does when they re-read and reflect on something, so hard
 multi-hop questions became answerable. I took it a long way and open-sourced the result,
-an out-of-the-box RAG that scores in the top 1% on multi-hop benchmarks. Giving the
-community something that useful is one of the things I'm proudest of, and what Vrin gave
-me back was everything I learned building it.
+Engram, a local-first RAG that matches field state-of-the-art on MuSiQue, one of the
+hardest multi-hop QA benchmarks. Giving the community something that useful is one of the
+things I'm proudest of, and what Vrin gave me back was everything I learned building it.
 
 Two lessons stood out. First, the software itself was commoditizing. With enough agents,
 skills, and a good harness the capability works out of the box, exactly what Gary Tan
