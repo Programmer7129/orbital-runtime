@@ -64,6 +64,8 @@ can't shortcut."
 
 ## SUBMITTED ANSWERS — Fall 2026 form (name: Steadstar; SteadStar vs Steadstar TBD)
 
+**STANDING RULE: use "I", never "we" (solo founder). Product = "the runtime"/"Steadstar"/"it".**
+
 **Company name:** Steadstar
 **Describe in 50 chars:** Radiation fault-tolerance for GPUs in orbit  (43 chars)
 
@@ -81,7 +83,7 @@ worse model, with nothing to flag it. Error-correcting memory catches only some
 single-bit flips; nothing protects the job itself, so today each operator hand-rolls
 its own fix or goes without.
 
-Our runtime wraps an unmodified PyTorch job. It detects corruption in three tiers
+The runtime wraps an unmodified PyTorch job. It detects corruption in three tiers
 (cheap guards on the loss and gradients, checksums on the matrix multiplies, and the
 GPU's own error counters), catching the silent errors as well as the loud ones, then
 recovers by rolling back to a checkpoint and replaying, whether the fault was a bad
@@ -90,7 +92,7 @@ number, a NaN, or a full crash.
 It's already built and validated: on a rented datacenter GPU at true orbital
 radiation rates, an unprotected training run dies while the identical protected run
 completes, at ~1.6% detection overhead. Every constant is calibrated to NASA and
-flight data. Next, we validate the fault model against a proton beam to measure how
+flight data. Next, I validate the fault model against a proton beam to measure how
 each GPU generation actually fails, proprietary data that compounds per chip and per
 customer.
 
@@ -103,9 +105,9 @@ reproducible demo. On a rented NVIDIA L4 datacenter GPU at true orbital radiatio
 rates, an unprotected training run dies while the identical protected run completes,
 at ~1.6% detection overhead.
 
-We've been deliberate about credibility. Every physics constant is calibrated to
-NASA, CREME96, and flight data. We commissioned two adversarial reviews (methodology
-and reproducibility) and fixed or disclosed every finding. And we calibrated the
+I've been deliberate about credibility. Every physics constant is calibrated to
+NASA, CREME96, and flight data. I commissioned two adversarial reviews (methodology
+and reproducibility) and fixed or disclosed every finding. And I calibrated the
 fault model against published proton-beam data from Google's TPU tests and the
 radiation-effects literature.
 
