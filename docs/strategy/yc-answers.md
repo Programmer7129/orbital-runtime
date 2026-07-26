@@ -128,6 +128,12 @@ specific GPU generation actually fails under radiation. Alongside it, I'm starti
 design-partner conversations with the operators about to hit this problem, Sophia
 Space, Axiom, and the ones coming after them.
 
+**How long have you been working on this? How much full-time?**
+About four weeks, and all of it full-time. I started at the beginning of July 2026
+and have worked on it every day since, which is how it went from an idea to a
+validated, GPU-tested MVP this quickly. I'm solo, and Steadstar is what I'm going
+all-in on, 100% full-time from here.
+
 **FRAMING RULE for competitors/moat (NEVER say "they can't build it"):** Any operator
 can build a v1; several hand-roll one today. The claim is that they will BUY not
 BUILD, via the cloud-consolidation dynamic. Radiation reliability is undifferentiated
