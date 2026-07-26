@@ -5,15 +5,32 @@ ships. Citations pending are marked [CITE].
 
 ## Q: Who writes code / non-founder work?
 
-DRAFT (approved-pending-user-edits): Sole founder does all technical work; no human
-non-founders, no contractor code, no prior-employer IP. Work method: founder architects
-and directs AI coding agents (Claude-family) against written specs; independently
-verified via two adversarial AI reviews committed to the repo (docs/reviews/), which
-found real bugs subsequently fixed. Physics constants trace to NASA NEPP / CREME96 /
-flight studies in-code. Deliverables: calibrated fault injector, 3-tier detection
-(+1.6% overhead on NVIDIA L4), orbit-aware checkpoint/recovery, 270-test suite; L4
-validation run: unprotected dies at step 179 at calibrated 1e-7 upsets/bit-day,
-protected completes 300/300.
+FINAL (paste-ready; figures verified against repo 2026-07-26):
+
+I do all of it. I'm the sole founder and the only person who has worked on the product:
+no non-founder humans, no contractors, and no code carried over from a past employer.
+
+How I build: I own the system design, the specifications, and the physics, and I direct
+AI coding agents (the Claude family) to implement against my specs. I run Claude Fable 5
+as the orchestrator and Opus 4.8 as the workforce, distributed across an agent team, but
+the architecture and every technical decision are mine. The AI is a tool I operate, not
+a person who worked on this.
+
+I also verified the work rather than trusting the agents. Two adversarial AI code
+reviews are committed to the repo (docs/reviews/); they found real bugs, which I then
+fixed. The physics constants trace to primary sources in the code (NASA NEPP, CREME96,
+published flight studies), not to anything a model invented.
+
+What that produced, solo: a calibrated radiation fault injector, three-tier fault
+detection at +1.6% overhead on an NVIDIA L4, orbit-aware checkpoint and recovery, and a
+suite of 287 passing tests. On the L4 validation run (calibrated 1e-7 upsets per
+bit-day, the top of the flight band), the unprotected model takes 128 upsets and dies
+with a NaN at step 179, while the protected run absorbs 326 upsets and completes all
+300 steps.
+
+(Repo-verified numbers: 287 pass / 3 skipped on macOS/MPS [README.md]; overhead 1.617%
+[bench/results/overhead_l4.json]; seed-3 mission step-179 death / 300-of-300 protected,
+128 vs 326 upsets [README.md]. Earlier "270"/"288" test counts were wrong.)
 
 ## Q: Competitors — "why won't NVIDIA just do this?" (the survival argument)
 
