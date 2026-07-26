@@ -132,11 +132,13 @@ Space, Axiom, and the ones coming after them.
 Yes. I've taken it this far solo, but I'm clear-eyed about the shape of team this
 needs.
 
-Physics isn't foreign to me, it's something I've loved for a long time. I earned a
-silver medal in the International Astronomy and Astrophysics Competition, and I've
-gone deep into the radiation-effects literature myself, that's how I calibrated the
-fault model to NASA and flight data and checked it against Google's beam results. So
-I can hold the physics, build the software around it, and tell good science from bad.
+Physics isn't foreign to me. I earned a silver medal in the International Astronomy and
+Astrophysics Competition, and I studied quantum-computer hardware and error correction
+through TU Delft, so the core idea here, detecting and correcting faults in computation,
+is one I've worked in before. I've also gone deep into the radiation-effects literature
+myself, which is how I calibrated the fault model to NASA and flight data and checked it
+against Google's beam results. So I can hold the science, build the software around it,
+and tell good work from bad.
 
 But there's a real difference between reading the field and being the person who has
 spent years running proton-beam experiments and characterizing exactly how silicon
@@ -150,10 +152,12 @@ I'm searching actively now, including through YC's co-founder matching platform,
 reaching out to people in that field directly. I'd rather find the right complement
 than stay solo by default.
 
-*(Founder physics thread to reuse in founder video + "why this idea/domain
-expertise": IAAC silver medal, self-taught the radiation-effects specifics, calibrated
-the model personally. Not a physics tourist; just not the deep experimental
-specialist, which is the co-founder gap.)*
+*(Founder physics thread: IAAC silver medal, TU Delft quantum error-correction
+coursework, self-taught the radiation-effects specifics, calibrated the model
+personally. Not a physics tourist; just not the deep experimental specialist, which is
+the co-founder gap. NOTE: "why this idea" uses IAAC + TU Delft QEC as the ORIGIN story,
+so this answer frames QEC as COMPETENCE ("worked in before") to keep the two from
+reading as copies.)*
 
 **How long have you been working on this? How much full-time?**
 About four weeks, and all of it full-time. I started at the beginning of July 2026
