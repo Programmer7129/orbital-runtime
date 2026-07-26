@@ -246,8 +246,24 @@ So my best estimate is a $600M-a-year company on a conservative 20% slice of a m
 that has barely started, and multiples of that if the gigawatt-scale plans (Starcloud's
 5 GW, its 10 GW Crusoe deal, Anthropic's multi-GW interest) land.
 
+Sources:
+- 1.5 GW of orbital compute / ~18,600 data-center satellites by 2035: ABI Research,
+  "Number of Data Centers in Space" forecast (abiresearch.com).
+- ~1M H100-equivalent GPUs per gigawatt: Starcloud, reported in SpaceNews, "Starcloud's
+  path to 88,000 computing satellites" (spacenews.com).
+- $39B orbital-datacenter market by 2035 (from $1.8B in 2029, ~67% CAGR): BIS Research /
+  ResearchAndMarkets, "In-Orbit Data Centers Market" (bisresearch.com).
+- Starcloud 5 GW plan and 10 GW Crusoe agreement: Futurum Group (futurumgroup.com).
+- Anthropic-SpaceX multi-gigawatt interest, May 2026: ABI Research (abiresearch.com).
+
+The rest are my own estimates, not sourced: the 15-operator count (my tally of publicly
+announced operators, mid-2026); the $200k assessment price and $2k/GPU/year license (my
+pricing, benchmarked to how space teams buy mission-assurance, and set under a tenth of
+the ~$26k/GPU/year compute value, which is $39B divided by 1.5M GPUs); and the 20%
+capture.
+
 (Full ICP value/pricing research: docs/strategy/icp-value-gtm.md. Bottom-up TAM model +
-sources: same file, "BOTTOM-UP TAM" section.)
+full source URLs: same file, "BOTTOM-UP TAM" section.)
 
 **Why this idea? Domain expertise? How do you know people need it?**
 Why I picked it: it's where my two obsessions meet. I'm an AI-infrastructure engineer

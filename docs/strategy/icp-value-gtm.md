@@ -137,7 +137,17 @@ $B/yr, consistent with the per-GPU build.
 - 25% of $10B = ~$2.5B/yr revenue (bull).
 - Software margins -> multi-billion-dollar company either way.
 
-Sources: ABI Research (space-datacenters forecast: 1.5 GW / 18,600 sats by 2035);
-Starcloud (1M H100/GW, 5 GW plan, 88,000-sat path, Crusoe 10 GW deal); BIS Research /
-ResearchAndMarkets (in-orbit DC market $1.8B->$39B, 67% CAGR); Anthropic-SpaceX
-multi-GW interest (May 2026).
+Sources (full URLs):
+- ABI Research, space-datacenters forecast (1.5 GW / 18,600 sats by 2035):
+  https://www.abiresearch.com/news-resources/chart-data/number-of-data-centers-in-space-forecast
+- ABI Research blog, Anthropic-SpaceX multi-GW interest (May 2026):
+  https://www.abiresearch.com/blog/data-centers-in-space
+- Starcloud (1M H100/GW, 88,000-sat path), via SpaceNews:
+  https://spacenews.com/starclouds-path-to-88000-computing-satellites/
+- Starcloud 5 GW plan + 10 GW Crusoe deal, Futurum Group:
+  https://futurumgroup.com/insights/will-starclouds-orbital-data-centers-solve-nvidias-terrestrial-energy-crisis/
+- BIS Research / ResearchAndMarkets, in-orbit DC market $1.8B->$39B, 67% CAGR:
+  https://bisresearch.com/industry-report/in-orbit-data-centers-market.html
+
+NOT sourced (my own estimates): 15-operator count; $200k assessment price; $2k/GPU/yr
+license; 20% capture. $26k/GPU/yr and $3B/$600M are derived from the sourced figures.
