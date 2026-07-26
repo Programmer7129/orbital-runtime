@@ -386,22 +386,25 @@ where the layer ends is a strength signal.
 Yes. A few batches ago I applied with Vrin, a "cognitive core" for enterprises: a
 retrieval layer that enriched data at ingestion time, wiring up connections between
 entities the way a person does when they re-read and reflect on something, so hard
-multi-hop questions became answerable. I made real progress, then moved on for two
-reasons. The space flooded within months, everyone building a "company brain," and
-without existing distribution it was very hard to break in. More fundamentally, the
-software itself was commoditizing. With enough agents, skills, and a good harness the
-capability works out of the box, exactly what Gary Tan demonstrated with the G-Brain and
-G-Stack, and frontier labs paired with consulting firms (OpenAI and Anthropic with the
-Deloittes and Morgan Stanleys of the world) are absorbing custom enterprise AI with
-distribution I could not match. Product companies there are quietly becoming services
-businesses.
+multi-hop questions became answerable. I took it a long way and open-sourced the result,
+an out-of-the-box RAG that scores in the top 1% on multi-hop benchmarks. Giving the
+community something that useful is one of the things I'm proudest of, and what Vrin gave
+me back was everything I learned building it.
 
-The lesson became the thesis for Steadstar: when software is no longer the moat, the
-only durable edge is either instant distribution or a problem so specific to you that no
-one can replicate your right to solve it. Steadstar is the second. Radiation
-fault-tolerance for orbital GPUs sits at an intersection of AI infrastructure and
-error-correction physics that is genuinely mine, in a market with a hard, measurable
-failure and a countable set of named buyers. That is the opposite of Vrin.
+Two lessons stood out. First, the software itself was commoditizing. With enough agents,
+skills, and a good harness the capability works out of the box, exactly what Gary Tan
+demonstrated with the G-Brain and G-Stack; frontier labs paired with consulting firms
+(OpenAI and Anthropic with the Deloittes and Morgan Stanleys of the world) are absorbing
+custom enterprise AI with distribution no independent software product could match, and
+even product companies in that space are sliding into becoming services businesses.
+Second, in that world the only durable edge is either instant distribution or a problem
+so specific to you that no one can replicate your right to solve it.
+
+That second lesson is the thesis behind Steadstar. Radiation fault-tolerance for orbital
+GPUs sits at an intersection of AI infrastructure and error-correction physics that is
+genuinely mine, in a market with a hard, measurable failure and a countable set of named
+buyers. That is the opposite of Vrin's diffuse, crowded space, and exactly the kind of
+problem I learned to look for.
 
 ## Remaining questions — to draft one by one
 Cofounder question · founder video script · company URL · location · full-time
