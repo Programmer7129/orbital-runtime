@@ -194,6 +194,22 @@ person went from an idea to a GPU-validated MVP in four weeks. The thinking, the
 system design, the physics, and the verification are mine; the AI is the execution
 engine.
 
+**Are people using your product?** No.
+
+**When will you have a version people can use?**
+The core already runs, anyone with a GPU can install it and reproduce the demo today.
+So the software isn't the blocker. What's left is getting it into an operator's hands
+and making it flight-trustworthy.
+
+I can have a design partner running it against their own workload in the next few
+weeks, because the runtime wraps an unmodified PyTorch job, integration is light. The
+proton-beam validation, which turns "calibrated against published data" into
+"validated against our own beam results," is the longer pole, a few months out and
+gated mostly by beam scheduling.
+
+So: a version a design partner can test in weeks, and a flight-validated version
+they'd deploy in a few months.
+
 **FRAMING RULE for competitors/moat (NEVER say "they can't build it"):** Any operator
 can build a v1; several hand-roll one today. The claim is that they will BUY not
 BUILD, via the cloud-consolidation dynamic. Radiation reliability is undifferentiated
