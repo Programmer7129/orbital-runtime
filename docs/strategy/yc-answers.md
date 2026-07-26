@@ -401,16 +401,21 @@ Morgan Stanleys) to build enterprise AI for people directly, with distribution I
 never match on my own. So even good product companies there are quietly turning into
 services businesses.
 
-That left me with two rules. One, if the software is easy to copy, go where you can get
-in early and be one of the first real providers, before it turns into a crowd. Two, pick
-a problem specific enough to you that copying you doesn't actually help anyone.
+That left me with a few things I keep coming back to. The biggest is distribution. In a
+crowded market it's probably the single most important factor in whether you can actually
+scale, and the frontier labs plus those consulting firms already had a distribution
+engine I was never going to out-run. Since I can't win on raw distribution yet, the two
+moves I can control are these: if the software is easy to copy, get in early and be one of
+the first real providers before the market fills up; and pick a problem specific enough
+to you that copying you doesn't really help anyone.
 
-Steadstar follows both. The orbital-compute market is just forming and there's no
-standard player for the reliability layer yet, so I can genuinely be early here in a way
-you just can't be in enterprise RAG anymore. And keeping computation correct through
-radiation sits right where my two things meet, AI infrastructure and error-correction
-physics, in a market with a hard, measurable failure and a small, nameable set of buyers.
-It's pretty much the opposite of where Vrin was.
+Steadstar follows all of this. The orbital-compute market is just forming and there's no
+standard player for the reliability layer yet, so I can get in early and build that
+distribution edge before it gets crowded, which you just can't do in enterprise RAG
+anymore. And keeping computation correct through radiation sits right where my two things
+meet, AI infrastructure and error-correction physics, in a market with a hard, measurable
+failure and a small, nameable set of buyers. It's pretty much the opposite of where Vrin
+was.
 
 ## Remaining questions — to draft one by one
 Cofounder question · founder video script · company URL · location · full-time
