@@ -209,42 +209,42 @@ per-chip failure data no one else has, which sharpens the product and builds the
 But nothing about it holds up a design partner starting now.
 
 **How do or will you make money? How much could you make?**
-Two ways, and they stack.
+I make money two ways, and they stack.
 
-The way in is a ground assessment: an operator runs their model and GPU through my
-simulator and gets a report on whether their workload survives their orbit and what
-protection costs. It's backed by my own proton-beam data, but that beam work is a
-one-time R&D cost per chip generation, not something I re-run per customer, so each
-assessment is cheap to deliver and easy for them to buy. That's the point: it lands the
-design partner and gives me their real workload data.
+First, before an operator launches, I sell a ground assessment. They run their actual
+model and GPU through my radiation simulator, backed by my own proton-beam data, and get
+a report on whether their workload survives their target orbit and what protection
+costs. It lands the design partner and gives me their real workload data. The beam work
+is a one-time R&D cost per chip generation, not something I re-run per customer, so each
+assessment is cheap to deliver.
 
-The business is the on-orbit runtime. Once they fly, Steadstar runs on the satellite
-protecting the live workload, licensed per GPU or per satellite, with a monitoring
-subscription on top. That's recurring, and it scales with the compute they deploy.
+Second, once they fly, Steadstar becomes the runtime on the satellite, protecting the
+live workload, licensed per GPU or per satellite with a monitoring subscription on top.
+That is the recurring business, and it scales with the compute they deploy.
 
-Pricing follows value. A node costs $50-60M, a single training run $50M-$1B, and in
-orbit you can't re-run it, so a reliability license is a rounding error against the
-loss it prevents.
+Here is the math, bottom-up.
 
-On size, here's the math, bottom-up.
+The inputs:
+- 15 operators: roughly the entire serious field flying commercial GPUs today,
+  concentrated enough that I can reach all of them directly.
+- $200k per operator per year for assessments: this maps to how space teams already buy
+  mission-assurance and pre-launch test campaigns.
+- 1.5M GPUs in orbit by 2035: ABI Research forecasts about 1.5 GW of orbital compute by
+  then, and Starcloud puts roughly 1M H100-equivalent GPUs in a gigawatt.
+- $2k per GPU per year for the runtime license: each GPU's compute is worth about $26k a
+  year (the $39B orbital-datacenter market divided across 1.5M GPUs), so this is under a
+  tenth of the value it protects.
+- 20% capture: deliberately conservative, the share I would hold as the neutral standard
+  operators consolidate onto.
 
-Two streams. The wedge is pre-launch assessments. The ~15 operators I can land first
-aren't the market, they're the beachhead, the serious teams flying COTS GPUs by 2027.
-At ~$200k each a year: 15 x $200k = ~$3M. Small on purpose, it lands the partners and
-harvests their data.
+The calculation:
+- Assessments today: 15 x $200k = $3M a year. Small on purpose, this is the wedge.
+- Runtime market by 2035: 1.5M x $2k = $3B a year.
+- My share: 20% x $3B = $600M a year, at software margins.
 
-The business is the runtime license, and it scales with GPUs in orbit, not operator
-count: GPUs x license-per-GPU-year. Forecasts put orbital compute near 1.5 GW by 2035
-(ABI Research), and at Starcloud's ~1M H100-equivalents per gigawatt that's ~1.5M GPUs.
-Each GPU's compute is worth ~$26k a year (the ~$39B 2035 datacenter market spread across
-them), so a reliability license at well under a tenth of that is ~$2k per GPU per year.
-That's 1.5M x $2k = ~$3B a year in reliability spend, and multiples of that if the
-gigawatt-scale plans land (Starcloud's 5 GW, its 10 GW Crusoe deal, Anthropic's
-multi-GW interest).
-
-I don't need most of it. As the neutral standard operators consolidate onto, capturing
-even 20% is 0.20 x $3B = ~$600M a year at software margins, a billion-dollar-plus
-company on a deliberately conservative slice of a market that's barely started.
+So my best estimate is a $600M-a-year company on a conservative 20% slice of a market
+that has barely started, and multiples of that if the gigawatt-scale plans (Starcloud's
+5 GW, its 10 GW Crusoe deal, Anthropic's multi-GW interest) land.
 
 (Full ICP value/pricing research: docs/strategy/icp-value-gtm.md. Bottom-up TAM model +
 sources: same file, "BOTTOM-UP TAM" section.)
