@@ -116,11 +116,11 @@ GPU generation actually fails, and design-partner outreach to the second-tier
 operators (Sophia Space, Axiom, and others) who can't build this in-house.
 
 **Interview-only honest boundary (do NOT put on website/app, but say if asked
-"what about latchup and total dose?"):** We handle single-event upsets, multi-bit
-upsets, functional interrupts/crashes, and silent corruption. Latchup (SEL) is a
-hardware short-circuit fixed by a power cycle; total ionizing dose (TID) is lifetime
-wear. Both are hardware/shielding, not our software layer. Knowing exactly where our
-layer ends is a strength signal.
+"what about latchup and total dose?"):** Steadstar handles single-event upsets,
+multi-bit upsets, functional interrupts/crashes, and silent corruption. Latchup (SEL)
+is a hardware short-circuit fixed by a power cycle; total ionizing dose (TID) is
+lifetime wear. Both are hardware/shielding, not the software layer. Knowing exactly
+where the layer ends is a strength signal.
 
 ## Remaining questions — to draft one by one
 Cofounder question · founder video script · company URL · location · full-time
