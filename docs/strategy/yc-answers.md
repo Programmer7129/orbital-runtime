@@ -382,6 +382,26 @@ is a hardware short-circuit fixed by a power cycle; total ionizing dose (TID) is
 lifetime wear. Both are hardware/shielding, not the software layer. Knowing exactly
 where the layer ends is a strength signal.
 
+**Same idea as a previous batch / why did you pivot + what did you learn?**
+Yes. A few batches ago I applied with Vrin, a "cognitive core" for enterprises: a
+retrieval layer that enriched data at ingestion time, wiring up connections between
+entities the way a person does when they re-read and reflect on something, so hard
+multi-hop questions became answerable. I made real progress, then moved on for two
+reasons. The space flooded within months, everyone building a "company brain," and
+without existing distribution it was very hard to break in. More fundamentally, the
+software itself was commoditizing: with enough agents, skills, and a good harness the
+capability works out of the box, and frontier labs paired with consulting firms (OpenAI
+and Anthropic with the Deloittes and Morgan Stanleys of the world) are absorbing custom
+enterprise AI with distribution I could not match. Product companies there are quietly
+becoming services businesses.
+
+The lesson became the thesis for Steadstar: when software is no longer the moat, the
+only durable edge is either instant distribution or a problem so specific to you that no
+one can replicate your right to solve it. Steadstar is the second. Radiation
+fault-tolerance for orbital GPUs sits at an intersection of AI infrastructure and
+error-correction physics that is genuinely mine, in a market with a hard, measurable
+failure and a countable set of named buyers. That is the opposite of Vrin.
+
 ## Remaining questions — to draft one by one
 Cofounder question · founder video script · company URL · location · full-time
 duration · tech stack + AI tools · why this idea/domain expertise/how do you know
