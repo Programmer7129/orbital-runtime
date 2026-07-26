@@ -211,26 +211,33 @@ But nothing about it holds up a design partner starting now.
 **How do or will you make money? How much could you make?**
 Two ways, and they stack.
 
-Before anyone launches, I sell a ground assessment: I run an operator's actual model
-and GPU under our calibrated radiation simulation and tell them whether it survives
-their target orbit and what protection costs. Fixed fee, roughly $50-250k a campaign,
-which maps to how space teams already buy mission-assurance work. Every operator needs
-it before every launch, and it needs nothing in orbit from me, so it's what I sell
-first.
+The way in is a ground assessment: an operator runs their model and GPU through my
+simulator and gets a report on whether their workload survives their orbit and what
+protection costs. It's backed by my own proton-beam data, but that beam work is a
+one-time R&D cost per chip generation, not something I re-run per customer, so each
+assessment is cheap to deliver and easy for them to buy. That's the point: it lands the
+design partner and gives me their real workload data.
 
-Once they fly, Steadstar becomes the runtime on the satellite protecting the live
-workload, licensed per GPU or per satellite so revenue scales with the compute they
-deploy, plus a monitoring subscription on top.
+The business is the on-orbit runtime. Once they fly, Steadstar runs on the satellite
+protecting the live workload, licensed per GPU or per satellite, with a monitoring
+subscription on top. That's recurring, and it scales with the compute they deploy.
 
-The reason they pay is insurance. A node costs $50-60M, a single training run $50M-$1B,
-and in orbit you can't re-run it, so the software is a rounding error against the loss
-it prevents. Near-term, that's assessment revenue across the ~15 serious operators
-building toward 2027 launches, low single-digit millions. At scale, it's a reliability
-license on every GPU in orbit, and operators are already filing for constellations in
-the tens and hundreds of thousands of units. If orbital compute reaches even a fraction
-of what's planned, the reliability layer on top of it is a nine-figure business.
+Pricing follows value. A node costs $50-60M, a single training run $50M-$1B, and in
+orbit you can't re-run it, so a reliability license is a rounding error against the
+loss it prevents.
 
-(Full ICP value/pricing research: docs/strategy/icp-value-gtm.md)
+On size, bottom-up. The wedge today is ~15 serious operators paying for pre-launch
+assessments, call it ~$200k each a year, low single-digit millions. The scale is the
+runtime license, and it tracks GPUs in orbit. Independent forecasts put orbital compute
+near 1.5 GW by 2035 (ABI Research), on the order of a million-plus datacenter GPUs at
+Starcloud's ~1M-H100s-per-gigawatt, inside an in-orbit datacenter market growing from
+~$1.8B in 2029 to ~$39B by 2035. Price the reliability license at a few percent of what
+each GPU's compute is worth, and it's a multi-billion-dollar layer on top of that
+market. As the neutral standard operators consolidate onto, capturing even a quarter of
+it is a billion-dollar-plus company.
+
+(Full ICP value/pricing research: docs/strategy/icp-value-gtm.md. Bottom-up TAM model +
+sources: same file, "BOTTOM-UP TAM" section.)
 
 **Why this idea? Domain expertise? How do you know people need it?**
 Why I picked it: it's where my two obsessions meet. I'm an AI-infrastructure engineer

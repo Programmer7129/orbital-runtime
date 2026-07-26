@@ -86,3 +86,49 @@ tell you on the ground and protect the run once it's up."
 Full sources in the research-agent transcript; key: Epoch (training cost), OCP/NVIDIA
 SDC, LLM-PRISM (arXiv 2604.10390), ScienceDirect (LEO SEU + smallsat failure), Falcon 9
 cost/kg, Starcloud economics, per-operator links.
+
+## BOTTOM-UP TAM (2026-07-26) — the model behind "how much could you make"
+Method (accelerator "bottom-up TAM"): for each revenue stream, ICP x annual contract
+value x count -> TAM; then capture % -> company size. Beats top-down "1% of a big
+market" because it disciplines the unit price (see the pricing correction below).
+
+**Stream A — pre-launch assessment (near-term wedge, 2027-2029)**
+- ICP: operators flying COTS GPUs (~15 serious ones today).
+- ACV: ~$150-250k/operator/yr (campaign-based; re-run per chip generation / per mission).
+- Count: ~15 now -> ~40-50 by 2030 as new entrants launch.
+- Near-term TAM: ~15 x ~$200k = ~$3M/yr. Small BY DESIGN — this is the land + the data
+  harvest, not the business.
+
+**Stream B — on-orbit runtime license (the business, 2030s)**
+- ICP: same operators, once deployed. Unit: per-GPU-year (or per-satellite).
+- Driver = GPUs in orbit. Anchors:
+  - 1 GW ~= ~1M H100-equivalent GPUs (Starcloud).
+  - ABI Research: ~1.5 GW effective / 18,600 datacenter satellites by 2035 -> ~1.5M GPUs
+    (conservative, independent analyst).
+  - Bull: Starcloud 5 GW design + 10 GW Crusoe deal + Anthropic/SpaceX "multiple GW"
+    (May 2026) -> ~5-10M GPUs.
+- Price: reliability license at ~5-10% of per-GPU compute spend.
+- TAM:
+  - Conservative (2035, 1.5M GPUs x ~$1.5k) = ~$2.25B/yr.
+  - Bull (5M GPUs x ~$2k) = ~$10B/yr.
+
+**PRICING DISCIPLINE (why bottom-up mattered):** implied compute spend = $39B market /
+~1.5M GPUs = ~$26k per GPU/yr. So a reliability license is ~$1.5-3k/GPU/yr (a few %),
+NOT the $10-30k/GPU/yr gut estimate — $10k would be ~40% of the compute bill, absurd.
+Bottom-up caught an overprice a top-down never would. (Still a rounding error vs the
+nine-figure workload it protects, but real money at fleet scale.)
+
+**Market cross-check:** in-orbit datacenter market $1.78B (2029) -> $39.1B (2035),
+67% CAGR (BIS/ResearchAndMarkets). Reliability layer = a few % of that = single-digit
+$B/yr, consistent with the per-GPU build.
+
+**Capture -> company size:** neutral standard + data moat -> winner-take-most ->
+20-40% share.
+- 25% of $2.25B = ~$560M/yr revenue (conservative).
+- 25% of $10B = ~$2.5B/yr revenue (bull).
+- Software margins -> multi-billion-dollar company either way.
+
+Sources: ABI Research (space-datacenters forecast: 1.5 GW / 18,600 sats by 2035);
+Starcloud (1M H100/GW, 5 GW plan, 88,000-sat path, Crusoe 10 GW deal); BIS Research /
+ResearchAndMarkets (in-orbit DC market $1.8B->$39B, 67% CAGR); Anthropic-SpaceX
+multi-GW interest (May 2026).
