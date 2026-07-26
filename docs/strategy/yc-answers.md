@@ -112,8 +112,20 @@ fault model against published proton-beam data from Google's TPU tests and the
 radiation-effects literature.
 
 The immediate next steps are a proton-beam validation campaign to measure how each
-GPU generation actually fails, and design-partner outreach to the second-tier
-operators (Sophia Space, Axiom, and others) who can't build this in-house.
+GPU generation actually fails, and design-partner outreach to second-tier operators
+like Sophia Space and Axiom.
+
+**FRAMING RULE for competitors/moat (NEVER say "they can't build it"):** Any operator
+can build a v1; several hand-roll one today. The claim is that they will BUY not
+BUILD, via the cloud-consolidation dynamic. Radiation reliability is undifferentiated
+infrastructure (no operator's edge is running its own bit-flip recovery, re-characterized
+every chip generation). Early cloud looked identical: enterprises built private clouds
+until the public providers' feature surface + economics made buying obvious. Steadstar's
+surface compounds the same way: beam-validated per-chip failure data, cross-fleet
+telemetry, flight heritage, then scheduling + assurance data on top. In-house v1 falls
+behind; buying wins. Goal = be the layer they consolidate onto (AWS of orbital-compute
+reliability), not the from-scratch build each abandons. This is AWS's own
+"undifferentiated heavy lifting" framing. See interview-ammo.md "feature or company".
 
 **Interview-only honest boundary (do NOT put on website/app, but say if asked
 "what about latchup and total dose?"):** Steadstar handles single-event upsets,
