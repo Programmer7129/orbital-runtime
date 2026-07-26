@@ -208,6 +208,30 @@ learning experiment: it confirms the fault model against real beam data and prod
 per-chip failure data no one else has, which sharpens the product and builds the moat.
 But nothing about it holds up a design partner starting now.
 
+**How do or will you make money? How much could you make?**
+Two ways, and they stack.
+
+Before anyone launches, I sell a ground assessment: I run an operator's actual model
+and GPU under our calibrated radiation simulation and tell them whether it survives
+their target orbit and what protection costs. Fixed fee, roughly $50-250k a campaign,
+which maps to how space teams already buy mission-assurance work. Every operator needs
+it before every launch, and it needs nothing in orbit from me, so it's what I sell
+first.
+
+Once they fly, Steadstar becomes the runtime on the satellite protecting the live
+workload, licensed per GPU or per satellite so revenue scales with the compute they
+deploy, plus a monitoring subscription on top.
+
+The reason they pay is insurance. A node costs $50-60M, a single training run $50M-$1B,
+and in orbit you can't re-run it, so the software is a rounding error against the loss
+it prevents. Near-term, that's assessment revenue across the ~15 serious operators
+building toward 2027 launches, low single-digit millions. At scale, it's a reliability
+license on every GPU in orbit, and operators are already filing for constellations in
+the tens and hundreds of thousands of units. If orbital compute reaches even a fraction
+of what's planned, the reliability layer on top of it is a nine-figure business.
+
+(Full ICP value/pricing research: docs/strategy/icp-value-gtm.md)
+
 **FRAMING RULE for competitors/moat (NEVER say "they can't build it"):** Any operator
 can build a v1; several hand-roll one today. The claim is that they will BUY not
 BUILD, via the cloud-consolidation dynamic. Radiation reliability is undifferentiated
