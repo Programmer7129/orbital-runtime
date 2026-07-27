@@ -8,12 +8,11 @@ Hit RESTART before recording. Speed 2× or 4×. Full-screen the browser.
 
 ## 1. FRAMING — who it's for and why it's inevitable (~20s)
 
-"Let me show you what Steadstar gives the companies racing to put data centers in space.
-The hyperscalers, Google and SpaceX among them, are promising orbital compute as early as
-2027, and the moment anyone gets GPUs running up there sustainably, they all hit the same
-wall. Space radiation flips bits in silicon, and a single flip can silently corrupt or
-kill a training run worth tens of millions of dollars, on a GPU you can't reach to reset
-or swap out."
+"Steadstar is for the companies putting data centers in orbit. Google, SpaceX, and others
+are targeting orbital compute as early as 2027, and once GPUs are running up there, they
+all run into the same problem. Space radiation flips bits in silicon, and a single flip
+can silently corrupt or kill a training run worth tens of millions of dollars, on a GPU
+you can't reach to reset or replace."
 
 ## 2. SCREEN ORIENTATION — what they're looking at (~25s)
 
@@ -31,9 +30,9 @@ bit flips injected, how many were caught and rolled back, and steps replayed."
 
 ## 3. THE CRUX — one dies, one survives (~30s)
 
-"Now here's the whole point. Watch the unprotected run. It trains normally, and then at
-step 179 a single bit flip hits a lethal spot and its loss goes to NaN. It's dead, and its
-status flips to DIED. In orbit, that's a multi-million-dollar run gone.
+"Now, the key part. Watch the unprotected run. It trains normally, and then at step 179 a
+single bit flip hits a lethal spot and its loss goes to NaN. It's dead, and its status
+flips to DIED. In orbit, that's a multi-million-dollar run gone.
 
 The protected run takes the exact same bombardment, 326 bit flips. Most are harmless, so
 Steadstar leaves them alone. But the moment a dangerous one lands, it catches it, rolls
