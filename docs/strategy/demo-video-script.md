@@ -1,46 +1,61 @@
-# Steadstar — demo video script (~75s)
+# Steadstar — demo video script (~1:45)
 
-Framing → screen orientation → the crux. Record on the mission-control dashboard
-(local file, or steadstar.vercel.app/demo once Vercel is connected).
+Story arc: why-now → the gap → the product as the answer → see it live.
+Record on the mission-control dashboard (local file, or steadstar.vercel.app/demo).
 Hit RESTART before recording. Speed 2× or 4×. Full-screen the browser.
+Plain and measured throughout. The facts carry the tension; no dramatic lines.
 
 ---
 
-## 1. FRAMING — who it's for and why it's inevitable (~20s)
+## 1. WHY WE'RE HERE — set the stage (~45s)
 
-"Steadstar is for the companies putting data centers in orbit. Google, SpaceX, and others
-are targeting orbital compute as early as 2027, and once GPUs are running up there, they
-all run into the same problem. Space radiation flips bits in silicon, and a single flip
-can silently corrupt or kill a training run worth tens of millions of dollars, on a GPU
-you can't reach to reset or replace."
+"AI is running out of power on Earth. The models keep getting bigger, and the datacenters
+training them already strain the power grid and consume enormous amounts of water for
+cooling. So the industry is starting to look to orbit, where the sun never sets and power
+is effectively unlimited, and space itself does the cooling. That's why Google, SpaceX,
+and others are targeting real data centers in orbit as early as 2027.
 
-## 2. SCREEN ORIENTATION — what they're looking at (~25s)
+There's one thing in the way. The chips that make this worth doing, commercial GPUs like
+NVIDIA's, were built for climate-controlled rooms on the ground, not for space. Up there,
+radiation constantly flips bits inside the silicon, and a single flip can silently corrupt
+a result or kill a training run worth tens of millions of dollars, on a GPU nobody can
+physically reach. The old fix, radiation-hardened chips, runs about a million times
+slower, which defeats the point of flying a GPU at all.
 
-"What you're looking at right now is a simulation of a real orbit around Earth. Notice the
-red stretch over one part of the orbit. That's the South Atlantic Anomaly, where Earth's
-inner radiation belt dips closest to the surface, because our magnetic field is tilted and
-offset from the center of the planet. Any satellite passing through it takes a sharp spike
-in radiation, and that's where most bit flips happen. Every flash you see is a real bit
-flip landing on the chip, at the actual calibrated flight-band rate.
+So the whole industry is walking into one question: how do you let a normal GPU survive
+orbit? That's what Steadstar does. Let me show you."
 
-I'm running three identical GPT models here, same seed, same data. The only difference
-between them is radiation and protection. On the right are their training loss curves,
-protected, unprotected, and a clean baseline. And these tiles track what's happening live,
-bit flips injected, how many were caught and rolled back, and steps replayed."
+## 2. WHAT YOU'RE LOOKING AT — orient the viewer (~30s)
+
+"Here's that problem, and the fix, running live. What you're looking at is a simulation of
+a real orbit around Earth. The red stretch over one part of the orbit is the South
+Atlantic Anomaly, the region where Earth's inner radiation belt dips closest to the
+surface, because our magnetic field is tilted and offset from the center of the planet. A
+satellite passing through it takes a sharp spike in radiation, so that's where most bit
+flips happen. Every flash on the screen is one real bit flip hitting the chip, at the
+actual rate a GPU would see in that orbit.
+
+To make the effect clear, I'm training three identical GPT models side by side, same seed,
+same data. The only thing different between them is radiation and protection. On the right
+you can watch their training loss, one protected, one unprotected, and a clean baseline
+with no radiation at all. And these tiles keep count as it happens: bit flips landing, how
+many were caught and rolled back, and steps replayed."
 
 ## 3. THE CRUX — one dies, one survives (~30s)
 
-"Now, the key part. Watch the unprotected run. It trains normally, and then at step 179 a
-single bit flip hits a lethal spot and its loss goes to NaN. It's dead, and its status
-flips to DIED. In orbit, that's a multi-million-dollar run gone.
+"Now watch what radiation does. The unprotected run trains normally, and then at step 179 a
+single bit flip lands in a spot that matters, and its loss jumps to NaN. The run is dead,
+and its status flips to DIED. In orbit, that's a training run worth millions, gone, on a
+chip nobody can reach.
 
-The protected run takes the exact same bombardment, 326 bit flips. Most are harmless, so
-Steadstar leaves them alone. But the moment a dangerous one lands, it catches it, rolls
-back to a verified checkpoint, and replays, 10 caught and rolled back, 141 steps replayed,
-all of it in this recovery log. It finishes all 300 steps, and its final loss matches the
-clean, radiation-free baseline.
+The protected run takes the exact same hits, 326 of them. Most do no harm, so Steadstar
+leaves them alone. But the moment one lands somewhere dangerous, it catches it, rolls back
+to a verified checkpoint, and replays from there. You can see it happen: 10 caught and
+rolled back, 141 steps replayed, each one logged here. The run survives all 300 steps and
+finishes at the same loss as the clean baseline.
 
-Same radiation. One run dies, one survives, for 1.6% overhead. That's Steadstar."
+Same orbit, same radiation. The unprotected run dies, the protected one lives, and the
+protection costs 1.6% in speed. That's Steadstar."
 
 ---
 
