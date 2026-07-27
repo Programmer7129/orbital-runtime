@@ -26,19 +26,16 @@ orbit? That's what Steadstar does. Let me show you."
 
 ## 2. WHAT YOU'RE LOOKING AT — orient the viewer (~30s)
 
-"This is a real run. I trained three identical GPT models on a rented NVIDIA L4 GPU and
-recorded everything that happened, and what you're watching is that recording played back.
-The orbit around Earth is simulated, but every number here, the losses, the bit flips, the
-failures, and the recoveries, came off the real GPU.
+"This is a real run on a rented NVIDIA L4 GPU. The orbit around Earth is simulated, but
+everything happening to the chip is real. The red stretch over one part of the orbit is the
+South Atlantic Anomaly, the region where Earth's inner radiation belt dips closest to the
+surface, because our magnetic field is tilted and offset from the center of the planet. A
+satellite passing through it takes a sharp spike in radiation, so that's where most bit
+flips happen. Every flash on the screen is one real bit flip hitting the chip, at the
+actual rate a GPU would see in that orbit.
 
-The red stretch over one part of the orbit is the South Atlantic Anomaly, the region where
-Earth's inner radiation belt dips closest to the surface, because our magnetic field is
-tilted and offset from the center of the planet. A satellite passing through it takes a
-sharp spike in radiation, so that's where most bit flips happen. Every flash on the screen
-is one real bit flip that hit the chip, at the actual rate a GPU would see in that orbit.
-
-The three models were trained side by side, same seed, same data. The only thing different
-between them is radiation and protection. On the right
+I'm training three identical GPT models side by side, same seed, same data. The only thing
+different between them is radiation and protection. On the right
 you can watch their training loss, one protected, one unprotected, and a clean,
 radiation-free baseline. And these tiles keep count as it happens: bit flips landing, how
 many were caught and rolled back, and steps replayed."
