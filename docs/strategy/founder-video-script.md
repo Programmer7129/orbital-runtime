@@ -15,7 +15,7 @@ revenue and helped several businesses accelerate their AI adoption. But alongsid
 always chased physics, from astrophysics competitions to studying quantum error
 correction, and that's exactly the kind of problem I'm solving now.
 
-As companies race to put data centers in space, radiation causes bit flips inside their GPUs and
+As companies start putting data centers in space, radiation causes bit flips inside their GPUs and
 quietly corrupts the compute. Every company handles that in-house today. I'm building the
 platform that does it for them, from testing the hardware before launch to keeping the
 compute reliable in orbit.
