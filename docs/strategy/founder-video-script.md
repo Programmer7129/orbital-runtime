@@ -47,7 +47,7 @@ layer the entire industry runs on."
 "Hi, I'm Vedant, founder and CEO of Steadstar, and I'm an AI engineer. Over the past year
 I've worked on projects affecting over $50 million in revenue and helped
 several businesses accelerate their AI adoption. Now I'm building Steadstar. As companies
-race to put data centers in space, radiation causes bit flips inside their GPUs and quietly
+start putting data centers in space, radiation causes bit flips inside their GPUs and quietly
 corrupts the compute. Every company handles that in-house today. I'm building the platform
 that does it for them, from testing before launch to keeping the compute reliable in
 orbit. Every GPU that flies is going to need this, and I'm building Steadstar to be the
