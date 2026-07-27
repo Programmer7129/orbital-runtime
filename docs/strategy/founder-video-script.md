@@ -15,10 +15,11 @@ revenue and helped several businesses accelerate their AI adoption. But alongsid
 always chased physics, from astrophysics competitions to studying quantum error
 correction, and that's exactly the kind of problem I'm solving now.
 
-As companies start putting data centers in space, radiation causes bit flips inside their GPUs and
-quietly corrupts the compute. Every company handles that in-house today. I'm building the
-platform that does it for them, from testing the hardware before launch to keeping the
-compute reliable in orbit.
+Companies have already begun initiatives to deploy data centers in space. The problem every
+one of them will inevitably face is radiation. In orbit, radiation induces bit flips inside
+the GPUs, and those flips silently corrupt the computation. Every company handles that
+in-house today. I'm building the platform that does it for them, from testing the hardware
+before launch to keeping the compute reliable in orbit.
 
 Every GPU that flies is going to need this, and I'm building Steadstar to be the reliability
 layer the entire industry runs on."
@@ -30,7 +31,8 @@ layer the entire industry runs on."
 - I'm Vedant, founder + CEO of Steadstar. AI engineer.
 - Past year: projects affecting $50M+ in revenue; helped businesses adopt AI.
 - Always chased physics too: astrophysics comps, quantum error correction = this exact problem.
-- Steadstar: as data centers go to space, radiation causes bit flips in GPUs, corrupts compute.
+- Companies starting to deploy data centers in space. Problem everyone faces: radiation.
+- Radiation induces bit flips in the GPUs -> silently corrupts the computation.
 - Everyone handles it in-house today. I build the platform: test before launch -> reliable in orbit.
 - Every GPU that flies needs this. Steadstar = the reliability layer the industry runs on.
 
@@ -46,9 +48,10 @@ layer the entire industry runs on."
 ## Alternative: no-physics version (shorter, ~50s)
 "Hi, I'm Vedant, founder and CEO of Steadstar, and I'm an AI engineer. Over the past year
 I've worked on projects affecting over $50 million in revenue and helped
-several businesses accelerate their AI adoption. Now I'm building Steadstar. As companies
-start putting data centers in space, radiation causes bit flips inside their GPUs and quietly
-corrupts the compute. Every company handles that in-house today. I'm building the platform
-that does it for them, from testing before launch to keeping the compute reliable in
-orbit. Every GPU that flies is going to need this, and I'm building Steadstar to be the
+several businesses accelerate their AI adoption. Now I'm building Steadstar. Companies have
+already begun initiatives to deploy data centers in space. The problem every one of them
+will inevitably face is radiation. In orbit, radiation induces bit flips inside the GPUs,
+and those flips silently corrupt the computation. Every company handles that in-house today.
+I'm building the platform that does it for them, from testing before launch to keeping the
+compute reliable in orbit. Every GPU that flies is going to need this, and I'm building Steadstar to be the
 reliability layer the entire industry runs on."
