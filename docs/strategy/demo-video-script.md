@@ -26,7 +26,7 @@ orbit? That's what Steadstar does. Let me show you."
 
 ## 2. WHAT YOU'RE LOOKING AT — orient the viewer (~30s)
 
-"This is a real run on a rented NVIDIA L4 GPU. The orbit around Earth is simulated, but
+"This is a real run on an NVIDIA L4 GPU. The orbit around Earth is simulated, but
 everything happening to the chip is real. The red stretch over one part of the orbit is the
 South Atlantic Anomaly, the region where Earth's inner radiation belt dips closest to the
 surface, because our magnetic field is tilted and offset from the center of the planet. A
