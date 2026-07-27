@@ -97,3 +97,56 @@ FINE (Run:ai precedent) — not a failure mode. One-liner: "Resilience is the we
 the whole company — it's a privileged wedge because it sits under everything and sees
 everything, which is exactly how Datadog and CrowdStrike turned one feature into a
 platform."
+
+## Terrestrial bit flips: how Earth handles it + why it doesn't transfer to orbit
+
+**How Earth deals with bit flips today (layered):**
+- Layer 1 — ECC memory (NVIDIA-built, in silicon): silently corrects single-bit memory
+  flips, flags double-bit; surfaced via Xid / DCGM. Catches the COMMON case → why most
+  people never think about radiation. Guards MEMORY only, not the math.
+- Layer 2 — SDC (silent data corruption in LOGIC/compute; ECC misses it). Discovered at
+  fleet scale by Google ("Cores That Don't Count," HotOS'21) + Meta ("SDC at Scale,"
+  2021): a few "mercurial cores" silently miscompute. Handled 100% IN-HOUSE via fleet
+  screening + quarantine (find bad chip, remove it).
+- Layer 3 — training resilience = checkpoint/rollback. Tools built by ByteDance
+  (ByteCheckpoint), academia (CheckFreq FAST'21, Gemini SOSP'23) — NOT NVIDIA.
+- WHO SELLS A NEUTRAL "keep-my-compute-correct" LAYER: nobody. Even the ecosystem layer
+  is DIY, because only hyperscalers feel enough pain to build it.
+
+**Q1 — Why can't Meta/ByteDance/Google do it for orbit too?**
+They built a "handle our rare broken chips" tool, not a "radiation reliability" tool.
+Different problem:
+- Terrestrial SDC = PERMANENT manufacturing defects in a FEW chips → screen + quarantine
+  + hot-swap. Orbital = TRANSIENT radiation strikes on EVERY healthy chip, intermittently,
+  correlated to orbit position (SAA). Nothing to quarantine (chip is fine 10 min later),
+  and you can't swap hardware in orbit. Their playbook ("find bad hardware, remove it")
+  is meaningless in orbit.
+- Their checkpoint cadence is tuned for a LOW rate; at the orbital rate it's uselessly
+  sparse. The hard part is knowing WHICH strike is lethal — that's what Steadstar does.
+- Data they lack: protecting vs radiation needs beam characterization of each chip. Meta
+  has never put an H100 in a cyclotron. Not their expertise; their tools encode none of
+  it. = the moat.
+- Even if they solved it, they build for THEMSELVES. Meta isn't a satellite operator and
+  won't become one to sell to Starcloud. Cloud-consolidation logic: they build in-house,
+  the market buys from a neutral platform.
+- One-liner: "Their tool finds the one broken chip in a million and removes it. In orbit,
+  every chip breaks intermittently and none can be removed. Not a harder version of their
+  problem — a different one, needing beam data they've never collected."
+
+**Q2 — Why not serve terrestrial datacenters too?**
+Could technically (same engine; Earth is the low-rate SUBSET), but leading there breaks
+every Vrin-pivot lesson:
+- Pain isn't acute on Earth: ECC + occasional checkpoint is "good enough" → low WTP.
+- Only buyers who feel it are hyperscalers, who build in-house (Q1). So terrestrial =
+  indifferent OR already-DIY'd. Crowded/free-ish — the market you learned to avoid.
+- Moat is orbit-specific: beam per-chip failure data is worth most where radiation
+  dominates; at sea level flux is ~100x+ lower and SDC is defect-driven, not
+  radiation-driven → the unique asset is least differentiating on the ground.
+- Focus: seed-stage wins by owning ONE acute, mandatory, unserved market. Orbit is that.
+- BUT real expansion later: neutron soft errors matter terrestrially at scale/altitude
+  (aviation, high-altitude DCs, huge fleets). Once you're the orbital standard with data
+  moat + flight heritage, moving DOWN to terrestrial is natural. Orbit = wedge,
+  terrestrial = later market.
+- One-liner: "Same engine, and Earth is the easy subset. But on Earth it's a nice-to-have
+  sold to a market that's indifferent or DIY. In orbit it's mandatory and unserved. I go
+  where the pain forces a purchase, then expand down to terrestrial from strength."
