@@ -40,18 +40,27 @@ you can watch their training loss, one protected, one unprotected, and a clean,
 radiation-free baseline. And these tiles keep count as it happens: bit flips landing, how
 many were caught and rolled back, and steps replayed."
 
-## 3. THE CRUX — one dies, one survives (~30s)
+## 3. THE CRUX — one dies, one survives (~50s)
 
 "Now watch what radiation does. The unprotected run trains normally, and then at step 179 a
 single bit flip lands in a spot that matters, and its loss jumps to NaN. The run is dead,
 and its status flips to DIED. In orbit, that's a training run worth millions, gone, on a
 chip nobody can reach.
 
-The protected run takes the exact same hits, 326 of them. Most do no harm, so Steadstar
-leaves them alone. But the moment one lands somewhere dangerous, it catches it, rolls back
-to a verified checkpoint, and replays from there. You can see it happen: 10 caught and
-rolled back, 141 steps replayed, each one logged here. The run survives all 300 steps and
-finishes at the same loss as the clean baseline.
+But not every hit is fatal, and this is the key to how Steadstar works. Every number in
+the model is stored as 32 bits, and most of those bits only fine-tune the value. When
+radiation flips one, the number barely changes, and training absorbs it like a bit of
+noise. That's the large majority of these 326 hits, and there's no reason to spend
+anything correcting them. The dangerous ones land on the few bits that set how big the
+number is. Flip one of those and a tiny weight can suddenly become an enormous value,
+which either blows the run up into a NaN, like you just saw, or silently corrupts the
+results without any warning.
+
+So the protected run takes the same 326 hits, ignores the harmless ones, and the moment a
+dangerous one lands, it catches it, rolls back to a verified checkpoint from just before,
+and replays from there. You can see it happen: 10 caught and rolled back, 141 steps
+replayed, each one logged here. The run survives all 300 steps and finishes at the same
+loss as the clean baseline.
 
 Same orbit, same radiation. The unprotected run dies, the protected one lives, and the
 protection costs 1.6% in speed. That's Steadstar."
