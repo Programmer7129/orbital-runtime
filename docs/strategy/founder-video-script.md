@@ -1,48 +1,54 @@
 # Steadstar — founder video (~60s)
 
-YC rule: don't read this on camera. Read it aloud a few times to internalize it, then
-record from the BULLET CUES below, saying it naturally, like to a friend. Warm and human,
-not the measured demo voice. Audio clarity > video quality. Face a window. Expect 4-5 takes.
+YC rule: don't read on camera. Read aloud a few times to internalize, then record from the
+BULLET CUES, talking naturally like to a friend. Warmer/faster than the demo voice.
+Audio clarity > video. Face a window. Expect 4-5 takes. Do NOT mention the co-founder
+search here (that's the written answer).
 
 ---
 
-## Full read-aloud version (to practice)
+## Full read-aloud version (recommended — credibility + one physics beat)
 
-"Hi, I'm Vedant. I'm an AI-infrastructure engineer. I take research ideas to production,
-and I recently open-sourced Engram, which reached field state-of-the-art on one of the
-hardest multi-hop benchmarks out there.
+"Hi, I'm Vedant, founder and CEO of Steadstar. I'm an AI engineer, and over the past year
+since graduating from UC Davis, I've worked on projects affecting over $50 million in
+revenue and helped several businesses accelerate their AI adoption. But alongside AI, I've
+always chased physics, from astrophysics competitions to studying quantum error
+correction, and that's exactly the kind of problem I'm solving now.
 
-But the thing I've chased my whole life, outside of work, is physics. I never studied it
-academically or professionally, I just went deep on my own. I earned a silver medal at the
-International Astronomy and Astrophysics Competition, and I studied quantum computers and
-quantum error correction through TU Delft. What pulled me in was error correction:
-protecting fragile computation from physical faults.
+As companies race to put data centers in space, radiation flips bits inside their GPUs and
+quietly corrupts the compute. Every company handles that in-house today. I'm building the
+platform that does it for them, from testing the hardware before launch to keeping the
+compute reliable in orbit.
 
-That same problem is now showing up in AI. As everyone races to put GPUs and data centers
-in space, radiation quietly corrupts the computation. It's fundamentally an
-error-correction problem solved in software, and it matters for where our civilization is
-heading.
-
-Computer science and physics have always been my two frontiers, and Steadstar is where
-they finally meet. My experience, my curiosity, and honestly my obsession all point to
-this one problem, and I'm all in."
+Every GPU that flies is going to need this, and I want Steadstar to be the reliability
+layer the entire industry runs on."
 
 ---
 
-## Bullet cue card (glance at this while recording)
+## Bullet cue card (glance while recording)
 
-- I'm Vedant. AI-infrastructure engineer, take research ideas to production.
-- Proof: open-sourced Engram → field SOTA on a hard multi-hop benchmark.
-- Chased physics my whole life. Never academic/professional, went deep on my own.
-- IAAC silver medal. TU Delft: quantum computers + quantum error correction.
-- The hook: error correction, protecting fragile computation from physical faults.
-- That same problem is now in AI: GPUs/data centers going to space, radiation corrupts compute.
-- It's an error-correction problem, solved in software. Matters for civilization.
-- CS + physics = my two frontiers. Steadstar is where they meet.
-- Experience + curiosity + obsession → this one problem. All in.
+- I'm Vedant, founder + CEO of Steadstar. AI engineer.
+- Since UC Davis: projects affecting $50M+ in revenue; helped businesses adopt AI.
+- Always chased physics too: astrophysics comps, quantum error correction = this exact problem.
+- Steadstar: as data centers go to space, radiation flips bits in GPUs, corrupts compute.
+- Everyone handles it in-house today. I build the platform: test before launch -> reliable in orbit.
+- Every GPU that flies needs this. Steadstar = the reliability layer the industry runs on.
 
-## Notes
-- ~165 words = a hair over 60s at natural pace. If you run long, trim the Engram
-  benchmark detail first, then the "matters for civilization" line.
-- Do NOT mention the co-founder / Chief Scientist search here (that's the written answer).
-- Keep it warmer and faster than the demo VO. Let the obsession show.
+## Defenses to keep in pocket (only if a partner asks)
+- "$50M affected": the inventory/fulfillment ML I built at Stanley (the Quencher brand,
+  ~$800M revenue). Say "affected" (revenue that ran through the systems), never "generated".
+- Physics: IAAC silver medal; TU Delft quantum computers + error correction coursework.
+
+## Trim options if you run long
+1. Cut the revenue specifics -> "I've shipped AI into production for real companies."
+2. If you must cut the physics beat, do it last -> it's your unique why-me for THIS problem.
+
+## Alternative: no-physics version (shorter, ~50s)
+"Hi, I'm Vedant, founder and CEO of Steadstar, and I'm an AI engineer. Over the past year
+since UC Davis, I've worked on projects affecting over $50 million in revenue and helped
+several businesses accelerate their AI adoption. Now I'm building Steadstar. As companies
+race to put data centers in space, radiation flips bits inside their GPUs and quietly
+corrupts the compute. Every company handles that in-house today. I'm building the platform
+that does it for them, from testing before launch to keeping the compute reliable in
+orbit. Every GPU that flies is going to need this, and I want Steadstar to be the
+reliability layer the entire industry runs on."
