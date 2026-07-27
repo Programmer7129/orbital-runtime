@@ -62,9 +62,9 @@ and replays from there. You can see it happen: 10 caught and rolled back, 141 st
 replayed, each one logged here. The run survives all 300 steps and finishes at the same
 loss as the clean baseline.
 
-Same orbit, same radiation. The unprotected run dies, the protected one lives and runs
-just 1.6% slower. That's what Steadstar provides: reliability in orbit without trading
-away the GPU's performance."
+Same orbit, same radiation. The unprotected run dies, the protected one lives, and the
+detection that catches the lethal hits adds just 1.6% to runtime. That's what Steadstar
+provides: reliability in orbit without trading away the GPU's performance."
 
 ---
 
@@ -79,6 +79,9 @@ away the GPU's performance."
 - seed 3, 300 steps, 4 orbits, NVIDIA L4, calibrated 1e-7 upsets/bit-day.
 - Unprotected: 128 upsets (114 in SAA) → NaN at step 179.
 - Protected: 326 upsets (302 in SAA), 10 detected → 10 rolled back, 141 replayed, 300/300.
-- Overhead: +1.6%.
+- Overhead: +1.6% = DETECTION-ONLY overhead (always-on cost of looking, measured with
+  radiation OFF, tier 1+2 adaptive, L4, 85M params). This is NOT the total protected-mission
+  time. Recovery replays (e.g. 141 steps here) are a SEPARATE, variable cost paid only when
+  a lethal hit is caught. So say "detection adds 1.6%", never "the run is only 1.6% slower".
 - CAVEAT: 10-rolled-back / 141-replayed are frozen M4b counts — correct for what's ON
   SCREEN; a fresh GPU rerun shifts those two slightly, story unchanged.
