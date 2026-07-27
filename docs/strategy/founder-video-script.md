@@ -10,7 +10,7 @@ search here (that's the written answer).
 ## Full read-aloud version (recommended — credibility + one physics beat)
 
 "Hi, I'm Vedant, founder and CEO of Steadstar. I'm an AI engineer, and over the past year
-since graduating from UC Davis, I've worked on projects affecting over $50 million in
+I've worked on projects affecting over $50 million in
 revenue and helped several businesses accelerate their AI adoption. But alongside AI, I've
 always chased physics, from astrophysics competitions to studying quantum error
 correction, and that's exactly the kind of problem I'm solving now.
@@ -28,7 +28,7 @@ layer the entire industry runs on."
 ## Bullet cue card (glance while recording)
 
 - I'm Vedant, founder + CEO of Steadstar. AI engineer.
-- Since UC Davis: projects affecting $50M+ in revenue; helped businesses adopt AI.
+- Past year: projects affecting $50M+ in revenue; helped businesses adopt AI.
 - Always chased physics too: astrophysics comps, quantum error correction = this exact problem.
 - Steadstar: as data centers go to space, radiation causes bit flips in GPUs, corrupts compute.
 - Everyone handles it in-house today. I build the platform: test before launch -> reliable in orbit.
@@ -45,7 +45,7 @@ layer the entire industry runs on."
 
 ## Alternative: no-physics version (shorter, ~50s)
 "Hi, I'm Vedant, founder and CEO of Steadstar, and I'm an AI engineer. Over the past year
-since UC Davis, I've worked on projects affecting over $50 million in revenue and helped
+I've worked on projects affecting over $50 million in revenue and helped
 several businesses accelerate their AI adoption. Now I'm building Steadstar. As companies
 race to put data centers in space, radiation causes bit flips inside their GPUs and quietly
 corrupts the compute. Every company handles that in-house today. I'm building the platform
