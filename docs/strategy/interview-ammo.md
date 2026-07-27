@@ -150,3 +150,24 @@ every Vrin-pivot lesson:
 - One-liner: "Same engine, and Earth is the easy subset. But on Earth it's a nice-to-have
   sold to a market that's indifferent or DIY. In orbit it's mandatory and unserved. I go
   where the pain forces a purchase, then expand down to terrestrial from strength."
+
+## "Doesn't everyone train/infer in BF16/FP8 now, not FP32?" (precision objection)
+Yes: training is mostly BF16 (FP16 older; FP8 emerging on H100/Blackwell); inference is
+FP16/BF16/FP8/INT8. Pure FP32 training is rare. But this STRENGTHENS the thesis:
+1. Mixed-precision training still keeps FP32 where it PERSISTS. Adam per-param: BF16 weight
+   + BF16 grad (32b) + FP32 master weight + FP32 m + FP32 v (96b) → ~75% of resident
+   training bits are FP32, and it's the DURABLE state a flip corrupts permanently. FP32
+   didn't leave, it moved into the optimizer.
+2. Vulnerability is format-agnostic: every float format has EXPONENT bits controlling
+   magnitude; flipping a high exponent bit → value explodes → NaN or silent corruption.
+   BF16 = 1 sign / 8 exp / 7 mantissa → SAME 8 exponent bits as FP32 but half the total
+   width, so a LARGER FRACTION of each number is magnitude-critical. FP8 (E4M3 = 1/4/3)
+   even more. Lower precision = fewer redundant bits to absorb hits + higher per-bit
+   lethality. The problem grows as the industry goes low-precision.
+- Caveat to know: INT formats (INT8/INT4, mostly inference) have no exponent, so a flip
+  changes value by a bounded amount (less catastrophic per-flip; accumulation still
+  matters). The catastrophic-explosion story is a FLOAT story — and training, where
+  checkpoint/recovery lives, is float. So the demo/story stays valid.
+- Script consequence: demo VO is format-AGNOSTIC ("floating-point numbers... most bits
+  fine-tune the value... the few exponent bits control magnitude"), not hard-coded to 32
+  bits. Never claim "every number is 32 bits."
