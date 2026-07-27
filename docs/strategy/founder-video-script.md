@@ -20,7 +20,7 @@ quietly corrupts the compute. Every company handles that in-house today. I'm bui
 platform that does it for them, from testing the hardware before launch to keeping the
 compute reliable in orbit.
 
-Every GPU that flies is going to need this, and I want Steadstar to be the reliability
+Every GPU that flies is going to need this, and I'm building Steadstar to be the reliability
 layer the entire industry runs on."
 
 ---
