@@ -10,10 +10,11 @@ Plain and measured throughout. The facts carry the tension; no dramatic lines.
 ## 1. WHY WE'RE HERE — set the stage (~45s)
 
 "AI is running out of power on Earth. The models keep getting bigger, and the datacenters
-training them already strain the power grid and consume enormous amounts of water for
-cooling. So the industry is starting to look to orbit, where the sun never sets and power
-is effectively unlimited, and space itself does the cooling. That's why Google, SpaceX,
-and others are targeting real data centers in orbit as early as 2027.
+training them are already pushing against the limits of the power grid. So the industry is
+starting to look to orbit, for one reason above all: solar power that never stops. In the
+right orbit the sun never sets, there's no atmosphere to weaken it and no night to
+interrupt it, and no grid to wait on. That's why Google, SpaceX, and others are targeting
+real data centers in orbit as early as 2027.
 
 There's one thing in the way. The chips that make this worth doing, commercial GPUs like
 NVIDIA's, were built for climate-controlled rooms on the ground, not for space. Up there,
