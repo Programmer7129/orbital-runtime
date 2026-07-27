@@ -9,7 +9,7 @@ search here (that's the written answer).
 
 ## Full read-aloud version (the one to use)
 
-"Hi, I'm Vedant, founder and CEO of Steadstar, and I'm an AI engineer. Over the past year
+"Hi, I'm Vedant, founder and CEO of Steadstar. I'm an AI engineer and over the past year
 I've worked on projects affecting over $50 million in revenue and helped several businesses
 accelerate their AI adoption.
 
