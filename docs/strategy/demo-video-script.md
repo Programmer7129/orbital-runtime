@@ -11,10 +11,8 @@ Plain and measured throughout. The facts carry the tension; no dramatic lines.
 
 "AI is running out of power on Earth. The models keep getting bigger, and the datacenters
 training them are already pushing against the limits of the power grid. So the industry is
-starting to look to orbit, for one reason above all: solar power that never stops. In the
-right orbit the sun never sets, there's no atmosphere to weaken it and no night to
-interrupt it, and no grid to wait on. That's why Google, SpaceX, and others are targeting
-real data centers in orbit as early as 2027.
+looking to orbit, where solar power is abundant and runs around the clock. That's why
+Google, SpaceX, and others are targeting real data centers in orbit as early as 2027.
 
 There's one thing in the way. The chips that make this worth doing, commercial GPUs like
 NVIDIA's, were built for climate-controlled rooms on the ground, not for space. Up there,
@@ -38,8 +36,8 @@ actual rate a GPU would see in that orbit.
 
 To make the effect clear, I'm training three identical GPT models side by side, same seed,
 same data. The only thing different between them is radiation and protection. On the right
-you can watch their training loss, one protected, one unprotected, and a clean baseline
-with no radiation at all. And these tiles keep count as it happens: bit flips landing, how
+you can watch their training loss, one protected, one unprotected, and a clean,
+radiation-free baseline. And these tiles keep count as it happens: bit flips landing, how
 many were caught and rolled back, and steps replayed."
 
 ## 3. THE CRUX — one dies, one survives (~30s)
