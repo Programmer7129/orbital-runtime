@@ -62,8 +62,9 @@ and replays from there. You can see it happen: 10 caught and rolled back, 141 st
 replayed, each one logged here. The run survives all 300 steps and finishes at the same
 loss as the clean baseline.
 
-Same orbit, same radiation. The unprotected run dies, the protected one lives, and the
-protection costs 1.6% in speed. That's Steadstar."
+Same orbit, same radiation. The unprotected run dies, the protected one lives, for 1.6%
+overhead. That's what Steadstar provides: reliability in orbit without trading away the
+GPU's performance."
 
 ---
 
