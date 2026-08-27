@@ -14,6 +14,155 @@ cannot. Every physics constant traces to a citation.
 
 ---
 
+## Orientation
+
+Read this first. It is reference material for someone who has not seen this repo before.
+
+### What this is
+
+`orbital-runtime` wraps an unmodified PyTorch training or inference job and keeps it
+computing correctly through radiation-induced bit flips. It injects faults at calibrated
+orbital rates, detects the corruption that results, repairs most of it in place, and rolls
+back only when it cannot. It targets operators putting commercial GPUs in orbit, where a
+particle strike corrupts a number and nothing in the existing stack notices.
+
+### Repo map
+
+Load-bearing modules, in the order a fault travels through them.
+
+| Path | What it does | Weight |
+|---|---|---|
+| `orbital_runtime/orbit/track.py` | Parametric 95-minute LEO orbit, phase-gated SAA window. | Load-bearing |
+| `orbital_runtime/orbit/flux.py` | Time-varying Poisson intensity: base rate x resident bits x SAA x storm. Also the ECC SDC-to-DUE redistribution. | Load-bearing |
+| `orbital_runtime/inject/gpu_model.py` | Samples the measured GPU fault distribution (Tung et al., DSN 2026): nullification, bit flip, NaN/Inf, and the bit-position prior. Every other injector asks this what kind of fault to produce. | Load-bearing |
+| `orbital_runtime/inject/memory.py` | Faults in STORED state: weights and Adam moments. Multi-bit clusters, warp-aligned tracks, write-path nullification. Owns `flip_bit`, the exact integer-view XOR every injector uses. | Load-bearing |
+| `orbital_runtime/inject/compute.py` | Faults in values IN FLIGHT: forward hooks on activations, reattached to the autograd graph so corruption reaches gradients. | Load-bearing |
+| `orbital_runtime/inject/injector.py` | Owns the whole fault timeline. Draws the schedule before step 0 from named RNG streams, which is what makes protected and unprotected runs face identical bombardment. | Load-bearing |
+| `orbital_runtime/inject/sefi.py`, `xid.py` | Device-level functional interrupts and the Xid stream. | Peripheral |
+| `orbital_runtime/detect/guards.py` | Tier 1. Free checks on scalars the loop already computed: isfinite, grad-norm z-score, loss spike. | Load-bearing |
+| `orbital_runtime/detect/integrity.py` | Tier 2. Exact integer checksums over all resident state, plus locate-and-repair. The largest and most important detector. Covers optimizer state, which is two thirds of strikeable bits. | Load-bearing |
+| `orbital_runtime/detect/abft.py` | Tier 3. Sampled checksums around `nn.Linear` GEMMs. The only tier that can see a corrupted computation whose stored weights are still clean. **Does not work in bf16, see Known limits.** | Load-bearing |
+| `orbital_runtime/detect/watcher.py` | Tier 4. Consumes real ECC and Xid counters through DCGM, simulated when absent. | Peripheral |
+| `orbital_runtime/detect/verdict.py` | The `Verdict` type and the tier and reason constants. Read it to know what a detection looks like. | Small, read it early |
+| `orbital_runtime/ckpt/` | `saver.py`, `policy.py`, `recover.py`. Distributed checkpoints, 4 slots, orbit-aware cadence. | Load-bearing for recovery |
+| `orbital_runtime/run.py`, `train.py` | CLI and the training loop that wires injection, detection and recovery together in the one correct order. | Load-bearing |
+| `orbital_runtime/rng.py` | Named RNG streams. Everything deterministic depends on this. | Small, load-bearing |
+| `orbital_runtime/workload.py` | The tiny interface a workload must satisfy: a model, an optimizer, a loss for a step. | Small |
+| `demo/workloads/nanogpt/` | The char-level GPT used by every bench and test. | Support |
+| `demo/dashboard/` | Self-contained local HTML dashboard. No server, no CDN. | Peripheral |
+| `bench/sdc_campaign.py` | Outcome campaign: masked, detected, SDC, per bit position, per format, undefended against defended. | Load-bearing |
+| `bench/detect_eval.py`, `recall_by_class.py`, `coverage_audit.py`, `fault_model_audit.py` | Detector-side measurement: recall, per-class recall, structural coverage, injector-vs-published drift. | Support |
+| `bench/overhead.py`, `protect_overhead_calibrated.py` | Timing. | Support |
+| `tests/` | 373 passing, 2 skipped. `test_integrity.py`, `test_abft.py` and `test_sdc_campaign.py` are the big three. | Load-bearing |
+
+The distinction that matters most: `inject/memory.py` and `detect/integrity.py` are the
+STORED-state pair. `inject/compute.py` and `detect/abft.py` are the IN-FLIGHT pair. A fault
+in one path is structurally invisible to the other path's detector.
+
+### How to run things
+
+```bash
+make venv install data          # .venv, editable install, tinyshakespeare corpus
+make test                       # full suite, about 60s
+.venv/bin/pytest tests/test_sdc_campaign.py    # just the campaign harness
+```
+
+Run the three-way demo, a clean baseline against an irradiated run against a protected run:
+
+```bash
+make demo                       # writes runs/, then demo/dashboard/index.html
+```
+
+Run an outcome campaign:
+
+```bash
+M="--n-layer 6 --n-embd 384 --n-head 6 --block-size 128 --batch-size 8 --warmup 300 --eval-batches 4"
+.venv/bin/python -m bench.sdc_campaign --arm paired --sweep bits --trials 100 \
+  --target weight --dtype float32 $M --json bench/results/sdc/out.json
+```
+
+Flags worth knowing:
+
+| Flag | Meaning |
+|---|---|
+| `--target` | `weight`, `optimizer`, `activation`, `gradient`. Optimizer and gradient need `--mode train`, because a forward pass never reads them. |
+| `--arm` | `undefended` (no detector, the customer-facing number), `defended`, or `paired` (both on the same site and bit). |
+| `--dtype` | `float32`, `bfloat16`, `float16`. Sets the bit-sweep width: 32 bits or 16. |
+| `--sweep` | `bits` holds the bit fixed and varies the site. `uniform` draws bits from `--bit-model`. |
+| `--bit-model` | `uniform` or `gpu` (the measured LSB-biased prior). Changes the blended rate substantially. |
+| `--mode` | `inference` or `train`. Train runs `--train-steps` real steps after the injection. |
+| `--noise-band N` | Trains N extra seeds and reports the spread between independently trained models. Context only, not a threshold. |
+| `--device` | `cpu`, `cuda`, `mps`. |
+| `--threads` | Recorded in the JSON because it changes the result, not just the speed. |
+
+Each campaign writes a text report and a JSON holding the config, per-bit summaries, and
+one record per trial.
+
+### State of the evidence
+
+| Directory | Hardware | Contents |
+|---|---|---|
+| `bench/results/sdc/` | CPU, Apple Silicon, torch 2.13.0 | fp32 campaigns: weights, activations, optimizer and gradient in train mode, both bit priors. Undefended only, plus a thread-count recheck. |
+| `bench/results/sdc-l4/` | NVIDIA L4 24GB, torch 2.7.0+cu128 | fp32 and bf16 weights, fp32/bf16/fp16 activations, both bit priors, all paired undefended against defended. ECC counters before and after. |
+| `bench/results/` | Mixed, see each file's `config` block | Older detector-side artifacts. Files tagged `_l4` came from a rented GPU that no longer exists. |
+
+Every JSON records its own device, dtype, thread count, seed, model size and torch version.
+Trust that block over any filename. Results are in the outcome-campaign section below.
+
+### Known limits and open work
+
+Consolidated here so they are in one place rather than scattered through the prose.
+
+1. **ABFT does not work in bf16.** Its tolerance is `safety * eps * sqrt(K) * scale`, which
+   at these reduction widths is 2.45x a row's L1 magnitude in bf16 against 3.7e-05 in fp32.
+   The bound exceeds the row it is checking, so nothing can trip it. bf16 is the format the
+   compute path runs in. This is the largest open problem in the repo.
+2. **Compute-path recall is 69.3%**, under the repo's own 70% gate.
+3. **ABFT fires on faults that have no consequence.** It fired on 36.9% of fp32 activation
+   trials while 21.5% were actually SDCs. Real faults, no harm, no value delivered.
+4. **Protection overhead is 25.7%** against a target under 10%. The fix is measured and
+   unimplemented.
+5. **Single-bit faults only** in the outcome campaign. Fewer than 40% of real GPU bit-flip
+   events are single-bit.
+6. **Tensor-level injection, not SASS-level.** Calibrated against published data. Not
+   beam-validated. No proton beam campaign has been run.
+7. **No fp16 campaign** beyond the activation arm.
+8. **Optimizer and gradient targets were never run on the L4.** They exist on CPU only.
+9. **CPU paired arms were never run.** The defended arm is L4-only. CPU is undefended only.
+10. **`--target gradient` has no defended arm** and refuses to run one, because the
+    integrity tier must run before `optimizer.step()` and a gradient fault only reaches the
+    state through that step.
+11. **No hang detection.** Campaign trials run in process, so a hang stalls the campaign
+    rather than being classified.
+
+### Traps that cost time
+
+Each of these produced a plausible, wrong, flattering result before it was found.
+
+1. **`IntegrityTier.check_now()` rate-limits against the last step it scanned, and
+   `reset()` does not clear that bookkeeping.** Pass a monotonically increasing step. A
+   constant step makes every call after the first skip its scan and report zero detections,
+   which looks like the detector failing.
+2. **Forward hooks fire in registration order.** An injector standing in for a fault inside
+   a GEMM must attach BEFORE ABFT. Attach ABFT first and it verifies the clean tensor and
+   passes every time, which reads as "ABFT detects nothing".
+3. **Reduce the loss in fp32 even when the model is bf16.** A native bf16 reduction is too
+   coarse to resolve the corruption, so every bf16 SDC reports a loss delta of exactly zero
+   and the number describes the observable rather than the fault.
+4. **CPU thread count changes the trained weights.** Matmul reduction order depends on it,
+   so the same seed at `--threads 3` and `--threads 8` trains different models with
+   different sensitivity, and the masked/SDC split moves several points. Record `--threads`
+   with any CPU number you quote.
+5. **Anything dtype-aware must take the dtype explicitly.** Hard-coding `torch.float32` in a
+   hook or a tensor filter makes a bf16 campaign silently do nothing and report 100% masked.
+6. **`check_now()` must run before `optimizer.step()`, `refresh()` immediately after it.**
+   Reversed, the tier compares legitimately updated state against a stale snapshot and
+   false-positives on every step.
+7. **`bench/results/` is gitignored** but its contents are tracked. New result files need
+   `git add -f`.
+
+---
+
 ## The idea that makes it work
 
 Detection is not the hard part. **Response** is.
