@@ -1,0 +1,73 @@
+/opt/pytorch/lib/python3.12/site-packages/torch/cuda/__init__.py:61: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+building + warming workload (300 steps, cuda), mode=inference ...
+  10.72M params, 32.17M resident fp32 elements (1.03e9 bits)
+  warm train loss 2.560996, golden eval loss 2.622276127
+  control (8 uninjected runs): 8/8 masked
+
+2000 trials, bit drawn from the 'gpu' model  [fp32, arm=undefended]
+  [200/2000] masked 61.0%  detected 0.0%  SDC 39.0%  SDC-crit 0.5%
+  [400/2000] masked 64.0%  detected 0.0%  SDC 36.0%  SDC-crit 0.8%
+  [600/2000] masked 66.0%  detected 0.2%  SDC 33.8%  SDC-crit 0.5%
+  [800/2000] masked 64.8%  detected 0.5%  SDC 34.8%  SDC-crit 0.8%
+  [1000/2000] masked 65.0%  detected 0.4%  SDC 34.6%  SDC-crit 0.7%
+  [1200/2000] masked 65.3%  detected 0.4%  SDC 34.2%  SDC-crit 0.7%
+  [1400/2000] masked 66.2%  detected 0.4%  SDC 33.4%  SDC-crit 0.8%
+  [1600/2000] masked 66.2%  detected 0.4%  SDC 33.4%  SDC-crit 0.9%
+  [1800/2000] masked 65.8%  detected 0.4%  SDC 33.8%  SDC-crit 0.8%
+  [2000/2000] masked 65.7%  detected 0.4%  SDC 33.9%  SDC-crit 0.8%
+
+============================================================================
+OVERALL  (weight target, inference mode, uniform sweep, fp32, cuda)
+============================================================================
+set               n         masked       detected            SDC   SDC-critical   loss delta
+--------------------------------------------------------------------------------------------
+all bits       2000   1314   65.7%      8    0.4%    678   33.9%     15    0.8%     5.96e-08
+
+field             n         masked       detected            SDC   SDC-critical   loss delta
+--------------------------------------------------------------------------------------------
+sign             18      3   16.7%      0    0.0%     15   83.3%      0    0.0%     2.38e-07
+exponent        151     20   13.2%      8    5.3%    123   81.5%     15    9.9%     2.38e-07
+mantissa       1831   1291   70.5%      0    0.0%    540   29.5%      0    0.0%     5.96e-08
+
+bit               n         masked       detected            SDC   SDC-critical   loss delta
+--------------------------------------------------------------------------------------------
+bit 0           185    172   93.0%      0    0.0%     13    7.0%      0    0.0%     5.96e-08
+bit 1           147    135   91.8%      0    0.0%     12    8.2%      0    0.0%     5.96e-08
+bit 2           144    117   81.2%      0    0.0%     27   18.8%      0    0.0%     5.96e-08
+bit 3           132    114   86.4%      0    0.0%     18   13.6%      0    0.0%     5.96e-08
+bit 4           133    109   82.0%      0    0.0%     24   18.0%      0    0.0%     5.96e-08
+bit 5           119     79   66.4%      0    0.0%     40   33.6%      0    0.0%     5.96e-08
+bit 6           100     72   72.0%      0    0.0%     28   28.0%      0    0.0%     5.96e-08
+bit 7            85     55   64.7%      0    0.0%     30   35.3%      0    0.0%     5.96e-08
+bit 8            96     57   59.4%      0    0.0%     39   40.6%      0    0.0%     5.96e-08
+bit 9            72     36   50.0%      0    0.0%     36   50.0%      0    0.0%     5.96e-08
+bit 10           68     40   58.8%      0    0.0%     28   41.2%      0    0.0%     5.96e-08
+bit 11           68     43   63.2%      0    0.0%     25   36.8%      0    0.0%     5.96e-08
+bit 12           67     43   64.2%      0    0.0%     24   35.8%      0    0.0%     5.96e-08
+bit 13           55     36   65.5%      0    0.0%     19   34.5%      0    0.0%     5.96e-08
+bit 14           63     36   57.1%      0    0.0%     27   42.9%      0    0.0%     5.96e-08
+bit 15           43     29   67.4%      0    0.0%     14   32.6%      0    0.0%     5.96e-08
+bit 16           36     24   66.7%      0    0.0%     12   33.3%      0    0.0%     5.96e-08
+bit 17           42     23   54.8%      0    0.0%     19   45.2%      0    0.0%     5.96e-08
+bit 18           46     27   58.7%      0    0.0%     19   41.3%      0    0.0%     5.96e-08
+bit 19           40     15   37.5%      0    0.0%     25   62.5%      0    0.0%     5.96e-08
+bit 20           31     11   35.5%      0    0.0%     20   64.5%      0    0.0%     5.96e-08
+bit 21           33     11   33.3%      0    0.0%     22   66.7%      0    0.0%     5.96e-08
+bit 22           26      7   26.9%      0    0.0%     19   73.1%      0    0.0%     5.96e-08
+bit 23           29      2    6.9%      0    0.0%     27   93.1%      0    0.0%     1.79e-07
+bit 24           27      4   14.8%      0    0.0%     23   85.2%      1    3.7%     5.96e-07
+bit 25           11      4   36.4%      0    0.0%      7   63.6%      1    9.1%     2.98e-07
+bit 26           22      0    0.0%      0    0.0%     22  100.0%      3   13.6%     8.94e-07
+bit 27           15      4   26.7%      0    0.0%     11   73.3%      0    0.0%     2.38e-07
+bit 28           17      6   35.3%      0    0.0%     11   64.7%      0    0.0%     1.79e-07
+bit 29           12      0    0.0%      0    0.0%     12  100.0%      0    0.0%     1.79e-07
+bit 30           18      0    0.0%      8   44.4%     10   55.6%     10   55.6%     1.56e+00
+bit 31           18      3   16.7%      0    0.0%     15   83.3%      0    0.0%     2.38e-07
+
+SDC magnitude (678 silent failures)
+  eval-loss delta   median 5.960e-08   max 1.560e+00
+  tokens changed    median 1597 of 4096   max 4096 of 4096  (100.0%)
+
+2000 trials in 53.7s
+wrote bench/results/sdc-l4/l4-fp32-weight-gpuprior.json

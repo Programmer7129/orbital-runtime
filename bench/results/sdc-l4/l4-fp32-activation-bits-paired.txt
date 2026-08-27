@@ -1,0 +1,103 @@
+/opt/pytorch/lib/python3.12/site-packages/torch/cuda/__init__.py:61: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+building + warming workload (300 steps, cuda), mode=inference ...
+  10.72M params, 32.17M resident fp32 elements (1.03e9 bits)
+  warm train loss 2.560996, golden eval loss 2.622276127
+  control (8 uninjected runs): 8/8 masked
+
+sweeping 32 bit positions x 50 trials = 1600  [fp32, arm=paired]
+/opt/pytorch/lib/python3.12/site-packages/torch/cuda/__init__.py:61: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+  bit  0 (mantissa) SDC undef   0.0%  def   0.0%  (repaired   0.0%  caught   0.0%)   [50/1600]
+  bit  1 (mantissa) SDC undef   0.0%  def   0.0%  (repaired   0.0%  caught   0.0%)   [100/1600]
+  bit  2 (mantissa) SDC undef   0.0%  def   0.0%  (repaired   0.0%  caught   0.0%)   [150/1600]
+  bit  3 (mantissa) SDC undef   0.0%  def   0.0%  (repaired   0.0%  caught   0.0%)   [200/1600]
+  bit  4 (mantissa) SDC undef   0.0%  def   0.0%  (repaired   0.0%  caught   0.0%)   [250/1600]
+  bit  5 (mantissa) SDC undef   0.0%  def   0.0%  (repaired   0.0%  caught   0.0%)   [300/1600]
+  bit  6 (mantissa) SDC undef   0.0%  def   0.0%  (repaired   0.0%  caught   0.0%)   [350/1600]
+  bit  7 (mantissa) SDC undef   0.0%  def   0.0%  (repaired   0.0%  caught   0.0%)   [400/1600]
+  bit  8 (mantissa) SDC undef   0.0%  def   0.0%  (repaired   0.0%  caught   0.0%)   [450/1600]
+  bit  9 (mantissa) SDC undef   0.0%  def   0.0%  (repaired   0.0%  caught   0.0%)   [500/1600]
+  bit 10 (mantissa) SDC undef   0.0%  def   0.0%  (repaired   0.0%  caught   0.0%)   [550/1600]
+  bit 11 (mantissa) SDC undef   0.0%  def   0.0%  (repaired   0.0%  caught   0.0%)   [600/1600]
+  bit 12 (mantissa) SDC undef   0.0%  def   0.0%  (repaired   0.0%  caught   0.0%)   [650/1600]
+  bit 13 (mantissa) SDC undef   0.0%  def   0.0%  (repaired   0.0%  caught   0.0%)   [700/1600]
+  bit 14 (mantissa) SDC undef   0.0%  def   0.0%  (repaired   0.0%  caught   0.0%)   [750/1600]
+  bit 15 (mantissa) SDC undef   0.0%  def   0.0%  (repaired   0.0%  caught   2.0%)   [800/1600]
+  bit 16 (mantissa) SDC undef   8.0%  def   4.0%  (repaired   0.0%  caught   6.0%)   [850/1600]
+  bit 17 (mantissa) SDC undef  10.0%  def   4.0%  (repaired   0.0%  caught  18.0%)   [900/1600]
+  bit 18 (mantissa) SDC undef  14.0%  def   6.0%  (repaired   0.0%  caught  30.0%)   [950/1600]
+  bit 19 (mantissa) SDC undef   2.0%  def   0.0%  (repaired   0.0%  caught  46.0%)   [1000/1600]
+  bit 20 (mantissa) SDC undef  16.0%  def   2.0%  (repaired   0.0%  caught  78.0%)   [1050/1600]
+  bit 21 (mantissa) SDC undef  30.0%  def   8.0%  (repaired   0.0%  caught  82.0%)   [1100/1600]
+  bit 22 (mantissa) SDC undef  54.0%  def   2.0%  (repaired   0.0%  caught  94.0%)   [1150/1600]
+  bit 23 (exponent) SDC undef  52.0%  def   0.0%  (repaired   0.0%  caught  98.0%)   [1200/1600]
+  bit 24 (exponent) SDC undef  68.0%  def   0.0%  (repaired   0.0%  caught 100.0%)   [1250/1600]
+  bit 25 (exponent) SDC undef  64.0%  def   0.0%  (repaired   0.0%  caught  98.0%)   [1300/1600]
+  bit 26 (exponent) SDC undef  66.0%  def   0.0%  (repaired   0.0%  caught  98.0%)   [1350/1600]
+  bit 27 (exponent) SDC undef  68.0%  def   0.0%  (repaired   0.0%  caught  96.0%)   [1400/1600]
+  bit 28 (exponent) SDC undef  58.0%  def   0.0%  (repaired   0.0%  caught  98.0%)   [1450/1600]
+  bit 29 (exponent) SDC undef  78.0%  def   0.0%  (repaired   0.0%  caught  96.0%)   [1500/1600]
+  bit 30 (exponent) SDC undef  32.0%  def   0.0%  (repaired   0.0%  caught  40.0%)   [1550/1600]
+  bit 31 (sign    ) SDC undef  68.0%  def   0.0%  (repaired   0.0%  caught 100.0%)   [1600/1600]
+
+============================================================================
+OVERALL  (activation target, inference mode, bits sweep, fp32, cuda)
+============================================================================
+arm               n         masked       detected            SDC   SDC-critical   loss delta
+--------------------------------------------------------------------------------------------
+undefended     1600   1226   76.6%     30    1.9%    344   21.5%     28    1.8%     1.19e-07
+defended       1600    967   60.4%     30    1.9%     13    0.8%      0    0.0%     5.96e-08
+
+  SDC        21.5%  ->  0.8%   (344 -> 13 of 1600)
+  SDC-crit   1.8%  ->  0.0%   (28 -> 0)
+  repaired   0.0%   caught 36.9%
+  share of undefended SDC removed by the defended arm: 96.2%
+
+field             n         masked       detected            SDC   SDC-critical   loss delta
+--------------------------------------------------------------------------------------------
+sign             50     16   32.0%      0    0.0%     34   68.0%      0    0.0%     1.19e-07
+exponent        400    127   31.8%     30    7.5%    243   60.8%     28    7.0%     1.79e-07
+mantissa       1150   1083   94.2%      0    0.0%     67    5.8%      0    0.0%     5.96e-08
+
+bit               n         masked       detected            SDC   SDC-critical   loss delta
+--------------------------------------------------------------------------------------------
+bit 0            50     50  100.0%      0    0.0%      0    0.0%      0    0.0%     0.00e+00
+bit 1            50     50  100.0%      0    0.0%      0    0.0%      0    0.0%     0.00e+00
+bit 2            50     50  100.0%      0    0.0%      0    0.0%      0    0.0%     0.00e+00
+bit 3            50     50  100.0%      0    0.0%      0    0.0%      0    0.0%     0.00e+00
+bit 4            50     50  100.0%      0    0.0%      0    0.0%      0    0.0%     0.00e+00
+bit 5            50     50  100.0%      0    0.0%      0    0.0%      0    0.0%     0.00e+00
+bit 6            50     50  100.0%      0    0.0%      0    0.0%      0    0.0%     0.00e+00
+bit 7            50     50  100.0%      0    0.0%      0    0.0%      0    0.0%     0.00e+00
+bit 8            50     50  100.0%      0    0.0%      0    0.0%      0    0.0%     0.00e+00
+bit 9            50     50  100.0%      0    0.0%      0    0.0%      0    0.0%     0.00e+00
+bit 10           50     50  100.0%      0    0.0%      0    0.0%      0    0.0%     0.00e+00
+bit 11           50     50  100.0%      0    0.0%      0    0.0%      0    0.0%     0.00e+00
+bit 12           50     50  100.0%      0    0.0%      0    0.0%      0    0.0%     0.00e+00
+bit 13           50     50  100.0%      0    0.0%      0    0.0%      0    0.0%     0.00e+00
+bit 14           50     50  100.0%      0    0.0%      0    0.0%      0    0.0%     0.00e+00
+bit 15           50     50  100.0%      0    0.0%      0    0.0%      0    0.0%     0.00e+00
+bit 16           50     46   92.0%      0    0.0%      4    8.0%      0    0.0%     5.96e-08
+bit 17           50     45   90.0%      0    0.0%      5   10.0%      0    0.0%     5.96e-08
+bit 18           50     43   86.0%      0    0.0%      7   14.0%      0    0.0%     5.96e-08
+bit 19           50     49   98.0%      0    0.0%      1    2.0%      0    0.0%     5.96e-08
+bit 20           50     42   84.0%      0    0.0%      8   16.0%      0    0.0%     5.96e-08
+bit 21           50     35   70.0%      0    0.0%     15   30.0%      0    0.0%     5.96e-08
+bit 22           50     23   46.0%      0    0.0%     27   54.0%      0    0.0%     5.96e-08
+bit 23           50     24   48.0%      0    0.0%     26   52.0%      0    0.0%     1.79e-07
+bit 24           50     16   32.0%      0    0.0%     34   68.0%      0    0.0%     2.98e-07
+bit 25           50     18   36.0%      0    0.0%     32   64.0%      1    2.0%     1.79e-07
+bit 26           50     17   34.0%      0    0.0%     33   66.0%      5   10.0%     1.19e-07
+bit 27           50     16   32.0%      0    0.0%     34   68.0%      4    8.0%     1.79e-07
+bit 28           50     21   42.0%      0    0.0%     29   58.0%      8   16.0%     1.79e-07
+bit 29           50     11   22.0%      0    0.0%     39   78.0%      2    4.0%     1.19e-07
+bit 30           50      4    8.0%     30   60.0%     16   32.0%      8   16.0%     9.60e-06
+bit 31           50     16   32.0%      0    0.0%     34   68.0%      0    0.0%     1.19e-07
+
+SDC magnitude (344 silent failures)
+  eval-loss delta   median 1.192e-07   max 4.741e+01
+  tokens changed    median 1 of 4096   max 23 of 4096  (0.6%)
+
+3200 trials in 164.2s
+wrote bench/results/sdc-l4/l4-fp32-activation-bits-paired.json

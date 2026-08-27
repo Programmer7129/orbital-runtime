@@ -1232,6 +1232,12 @@ def main() -> int:
                 "warmup_steps": args.warmup,
                 "eval_batches": args.eval_batches,
                 "device": str(camp.device),
+                # Recorded because it changes the RESULT, not just the speed.
+                # CPU matmul reduction order depends on the thread count, so a
+                # run at a different --threads trains to different weights and
+                # reports a different masked fraction. The bit-position
+                # structure holds; the percentages move by a few points.
+                "threads": args.threads or torch.get_num_threads(),
                 "seed": args.seed,
                 "n_layer": args.n_layer,
                 "n_head": args.n_head,

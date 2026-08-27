@@ -1,0 +1,2 @@
+name, driver_version, ecc.mode.current, ecc.errors.corrected.volatile.total, ecc.errors.uncorrected.volatile.total
+NVIDIA L4, 580.126.09, Enabled, 0, 0

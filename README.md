@@ -69,6 +69,251 @@ absorbed was **seen**. Counting it as a miss would be dishonest in the flatterin
 
 ---
 
+## Outcome campaign: what one bit flip does to an undefended run
+
+Every other bench here measures a detector. This one turns the detectors off and measures
+the fault, because the claim the product rests on is not "we catch faults". It is "faults
+that nobody catches produce answers that look fine and are wrong".
+
+`bench/sdc_campaign.py`. Software only. No proton beam and no radiation source.
+
+### The taxonomy
+
+Each trial flips exactly one bit in a warm workload and lands in one bucket.
+
+| Outcome | Meaning |
+|---|---|
+| `masked` | The output is bit-identical to the golden run. |
+| `detected` | The run raised, or the output holds a NaN or an Inf. |
+| `sdc` | The run finished, raised nothing, every output value is finite, and the output differs. |
+
+`detected` is the DUE-equivalent bucket. On silicon a DUE comes from ECC or an Xid. In a
+software injector the analogue is a failure loud enough that a free screen catches it,
+which is what `detect/guards.py` is.
+
+Comparison is bitwise with no tolerance. That is valid only if an uninjected run
+reproduces exactly, so every campaign first runs 8 uninjected control trials and aborts
+unless all 8 return `masked`. All campaigns below passed, on CPU and on CUDA.
+
+### Method
+
+A char-level nanoGPT of 10.72M parameters: 6 layers, 6 heads, 384 embedding dimensions,
+128-token context, batch size 8, tinyshakespeare. Seed 1337. The model trains 300 steps
+in fp32 before the first injection, so faults land in a model that has learned something.
+Narrow formats are cast after that warmup, which is also what deployment does.
+
+The observable is what the job returns: the mean cross-entropy as a float64, reduced in
+fp32, and the predicted token at each of 4096 positions. The target element is drawn
+uniformly across all resident elements of the campaign format, so a 384-element LayerNorm
+gain is not as likely a target as a 25M-element embedding.
+
+### Headline, undefended, measured on an NVIDIA L4 24GB
+
+`torch 2.7.0+cu128`, CUDA, seed 1337. Brackets are 95% Clopper-Pearson intervals.
+
+| Campaign (all L4-measured) | n | masked | detected | SDC | SDC changing a token |
+|---|---:|---|---|---|---|
+| fp32 weights, all 32 bits | 3200 | 46.6% [44.8, 48.3] | 1.8% [1.4, 2.3] | 51.7% [49.9, 53.4] | 2.9% [2.4, 3.5] |
+| bf16 weights, all 16 bits | 1600 | 5.7% [4.6, 6.9] | 3.6% [2.8, 4.7] | 90.7% [89.2, 92.1] | 53.6% [51.1, 56.0] |
+| fp32 activations, all 32 bits | 1600 | 76.6% [74.5, 78.7] | 1.9% [1.3, 2.7] | 21.5% [19.5, 23.6] | 1.8% [1.2, 2.5] |
+| fp32 weights, uniform bit prior | 2000 | 48.3% [46.1, 50.5] | 1.7% [1.2, 2.4] | 50.0% [47.8, 52.2] | 2.5% [1.9, 3.3] |
+| fp32 weights, measured GPU prior | 2000 | 65.7% [63.6, 67.8] | 0.4% [0.2, 0.8] | 33.9% [31.8, 36.0] | 0.8% [0.4, 1.2] |
+
+Across all 10,400 undefended L4 trials, **not one raised an exception**. Every detection
+was a non-finite value, which is the single failure a NaN screen catches for free.
+
+### bf16 is the result that matters commercially
+
+bf16 keeps all 8 exponent bits of fp32 and pays for them out of the mantissa. Half a bf16
+word is exponent or sign against a quarter of an fp32 word, and there are only 7 low bits
+left to absorb a flip harmlessly. The same experiment, same L4, same seed, same model,
+differing only in the stored format:
+
+| L4-measured | masked | SDC | SDC changing a token |
+|---|---|---|---|
+| fp32 weights | 46.6% | 51.7% | 2.9% |
+| bf16 weights | 5.7% | 90.7% | 53.6% |
+
+Moving the weights from fp32 to bf16 cuts the harmless fraction by 8x and raises the
+share of flips that change the model's answer by 18x. In fp32, mantissa bit 0 is masked
+93 times in 100 and changes no token. In bf16, mantissa bit 0 is masked 32 times in 100
+and changes a token 14 times in 100.
+
+### Bit position decides the outcome
+
+fp32 weights, L4-measured, 100 injections per bit position.
+
+| Field | Bits | n | masked | detected | SDC | SDC changing a token |
+|---|---|---:|---|---|---|---|
+| mantissa | 0-22 | 2300 | 60.2% | 0.0% | 39.8% | 0.0% |
+| exponent | 23-30 | 800 | 12.4% | 7.1% | 80.5% | 11.2% |
+| sign | 31 | 100 | 7.0% | 0.0% | 93.0% | 2.0% |
+
+bf16 weights, L4-measured, 100 injections per bit position.
+
+| Field | Bits | n | masked | detected | SDC | SDC changing a token |
+|---|---|---:|---|---|---|---|
+| mantissa | 0-6 | 700 | 12.3% | 0.0% | 87.7% | 37.4% |
+| exponent | 7-14 | 800 | 0.6% | 7.2% | 92.1% | 65.9% |
+| sign | 15 | 100 | 0.0% | 0.0% | 100.0% | 68.0% |
+
+Selected fp32 bit positions, L4-measured. The last column is the median change in
+validation loss across the silent failures at that bit.
+
+| Bit | Field | masked | detected | SDC | SDC changing a token | median loss delta |
+|---:|---|---|---|---|---|---|
+| 0 | mantissa | 93.0% | 0.0% | 7.0% | 0.0% | 6.0e-08 |
+| 8 | mantissa | 55.0% | 0.0% | 45.0% | 0.0% | 6.0e-08 |
+| 16 | mantissa | 49.0% | 0.0% | 51.0% | 0.0% | 6.0e-08 |
+| 22 | mantissa | 31.0% | 0.0% | 69.0% | 1.0% | 6.0e-08 |
+| 23 | exponent | 19.0% | 0.0% | 81.0% | 1.0% | 1.2e-07 |
+| 25 | exponent | 5.0% | 0.0% | 95.0% | 22.0% | 7.7e-07 |
+| 29 | exponent | 20.0% | 0.0% | 80.0% | 0.0% | 1.8e-07 |
+| 30 | exponent | 0.0% | 57.0% | 43.0% | 43.0% | 1.6e+00 |
+| 31 | sign | 7.0% | 0.0% | 93.0% | 2.0% | 2.4e-07 |
+
+The shape is the expected one and it is not smoothed. Two mechanisms drive the exponent
+column. A flip that lowers the exponent divides the weight toward zero, and one zeroed
+weight out of 32 million changes little. A flip that raises it multiplies the weight, and
+that is what moves the answer. Bit 30 multiplies by about 2^128, which is large enough to
+reach infinity part of the time and be caught.
+
+**One bit position produces every detection.** Of 187 detections across all 10,400
+undefended L4 trials, 129 were at fp32 bit 30 and 58 were at bf16 bit 14. Those are the
+same bit: the top exponent bit of each format. No other bit position in either word
+produced a single detection.
+
+### What "wrong" means, under three thresholds
+
+A bit-exact diff over-reports, so the campaign records enough per trial to apply a
+stricter test afterward. All three columns are L4-measured, from the same trials.
+
+| L4-measured campaign | n | any bit difference | a predicted token changed | loss moved past the seed-to-seed spread |
+|---|---:|---|---|---|
+| fp32 weights | 3200 | 51.7% | 2.9% | 0.9% |
+| bf16 weights | 1600 | 90.7% | 53.6% | 2.1% |
+| fp32 activations | 1600 | 21.5% | 1.8% | 0.1% |
+| fp32 uniform prior | 2000 | 50.0% | 2.5% | 0.9% |
+| fp32 measured GPU prior | 2000 | 33.9% | 0.8% | 0.4% |
+
+The seed-to-seed spread comes from training 5 extra models at different seeds on the same
+L4: pairwise validation-loss spread of 9.8e-04 to 5.0e-02, median 2.7e-02.
+
+**That floor is reported as scale, and is deliberately not used as the corruption
+threshold.** Two reasons, both visible in the numbers above. Those same 5 models disagree
+with each other on a median of 3373 of 4096 predicted tokens, so seed-to-seed token
+agreement is not a floor at all, it is noise larger than any single-bit fault. And in
+bf16 the loss test and the token test disagree by a factor of 25: 53.6% of flips change
+what the model predicts while only 2.1% move the loss past the seed spread. A loss-based
+threshold is blind to exactly the corruption that changes the output. The token test is
+the semantic one and is what the SDC-changing-a-token column reports throughout.
+
+### Paired arms: undefended against defended
+
+`--arm paired` runs each trial twice on the same site and the same bit, once with no
+detector and once with the integrity tier and ABFT active. The RNG state is rewound
+between arms and the two trials are asserted to have hit the same tensor.
+
+Both tiers run at their ceiling here: the integrity tier scans every step and ABFT samples
+every Linear. That measures what the detectors can see. It is not the shipping
+configuration, whose sample rates are lower and whose overhead is the 25.7% in the gate
+scoreboard above. This campaign does not measure overhead and makes no overhead claim.
+
+| L4-measured, paired | n | SDC undefended | SDC defended | outcome in the defended arm |
+|---|---:|---|---|---|
+| fp32 weights | 3200 | 51.7% | 0.0% [0.0, 0.1] | 100% repaired in place |
+| bf16 weights | 1600 | 90.7% | 0.0% [0.0, 0.2] | 100% repaired in place |
+| fp32 activations | 1600 | 21.5% | 0.8% [0.4, 1.4] | 36.9% caught, 96.2% of SDC removed |
+
+The stored-state result is the easy case and should be read as such. An exact integer
+checksum with locate-and-repair cannot miss a single-bit flip in a single element, so
+100% is the arithmetic working, not a surprise. The honest number is the activation row:
+ABFT removed 96.2% of the silent corruption and 13 trials in 1600 still got through
+undetected and wrong.
+
+Two caveats on the defended arm. ABFT fired on 36.9% of activation trials while only
+21.5% were SDCs, so it also caught faults that would have been masked anyway. Those are
+real faults with no consequence, not false positives, but they are not value delivered
+either. And `--target gradient` has no defended arm at all: the integrity tier must run
+before `optimizer.step()`, but a gradient fault only reaches the state through that step.
+The campaign refuses that combination rather than report a number that would measure a
+known false-positive path.
+
+### CPU against L4, same seed
+
+The same fp32 weight sweep, three times, on two platforms.
+
+| Run | masked | detected | SDC | SDC changing a token |
+|---|---|---|---|---|
+| CPU, 3 threads, torch 2.13.0 | 48.0% | 1.8% | 50.2% | 5.5% |
+| CPU, 8 threads, torch 2.13.0 | 43.1% | 1.8% | 55.1% | 3.2% |
+| L4 CUDA, torch 2.7.0+cu128 | 46.6% | 1.8% | 51.7% | 2.9% |
+
+`detected` is 57 of 3200 in all three, exactly. The masked and SDC columns move by about
+5 points and the token-changing column by about 2.6 points. The cause is not the
+hardware as such: CPU matmul reduction order depends on the thread count, so a run at a
+different `--threads` trains to different weights and those weights have different
+sensitivity. The bit-position structure is stable across all three. The exact percentages
+are a property of the specific trained model, and `--threads` is recorded in every JSON
+for that reason.
+
+### ECC
+
+The L4 ran with ECC enabled. Corrected and uncorrected volatile error counts were 0
+before the campaign and 0 after it, across all 10,400 injections. That is the expected
+result and not a null one: the injector writes into tensors through PyTorch, so it never
+crosses the DRAM ECC path. **Nothing in this campaign says what ECC would catch.** Real
+GPU DRAM ECC corrects most single-bit memory errors and converts some to detected
+uncorrectable errors, which would move part of the `sdc` column into `detected`. Registers
+and much of the on-chip logic carry no ECC at all.
+
+### Limits
+
+1. Single-bit faults only. Tung et al. report that fewer than 40% of real GPU bit-flip
+   events are single-bit.
+2. Tensor level, not instruction level. NVBitFI injects at SASS and sits closer to the
+   hardware. This injector is calibrated against published data. It is not beam-validated.
+3. `detected` means crash or non-finite and nothing else. It excludes any loss-spike
+   heuristic, which would catch part of the large-delta `sdc` column.
+4. No hang detection. Trials run in process, so a hang stalls the campaign rather than
+   being classified.
+5. One model at 10.72M parameters, one seed, one workload. Not a frontier model.
+6. The defended arm measures detection at the ceiling, not the shipping sample rates, and
+   says nothing about overhead.
+
+### Reproduce
+
+```bash
+make venv install data
+.venv/bin/pytest tests/test_sdc_campaign.py        # 49 tests on the harness itself
+
+M="--n-layer 6 --n-embd 384 --n-head 6 --block-size 128 --batch-size 8 --warmup 300 --eval-batches 4"
+
+# the headline, paired, plus the seed-to-seed floor
+python -m bench.sdc_campaign --arm paired --sweep bits --trials 100 --target weight \
+  --dtype float32 --noise-band 5 --device cuda $M --json bench/results/sdc-l4/l4-fp32-weight-bits-paired.json
+
+# the same in bf16, 16 bit positions
+python -m bench.sdc_campaign --arm paired --sweep bits --trials 100 --target weight \
+  --dtype bfloat16 --device cuda $M --json bench/results/sdc-l4/l4-bf16-weight-bits-paired.json
+
+# activations in flight
+python -m bench.sdc_campaign --arm paired --sweep bits --trials 50 --target activation \
+  --dtype float32 --device cuda $M --json bench/results/sdc-l4/l4-fp32-activation-bits-paired.json
+
+# blended rate under each bit prior
+python -m bench.sdc_campaign --sweep uniform --trials 2000 --bit-model uniform --target weight \
+  --device cuda $M --json bench/results/sdc-l4/l4-fp32-weight-uniform.json
+python -m bench.sdc_campaign --sweep uniform --trials 2000 --bit-model gpu --target weight \
+  --device cuda $M --json bench/results/sdc-l4/l4-fp32-weight-gpuprior.json
+```
+
+Drop `--device cuda` to run on CPU. Optimizer state and gradients need `--mode train`,
+because a forward pass never reads them. Results, text and JSON with one record per
+trial, are in `bench/results/sdc-l4/` for the L4 and `bench/results/sdc/` for CPU.
+
+---
+
 ## Gate scoreboard
 
 Thresholds were set **before** measurement, and two of them fail.

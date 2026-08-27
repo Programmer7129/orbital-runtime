@@ -1,0 +1,93 @@
+building + warming workload (300 steps, cpu), mode=inference ...
+  10.72M params, 32.17M resident fp32 elements (1.03e9 bits)
+  warm train loss 2.578655, golden eval loss 2.642872691
+  control (8 uninjected runs): 8/8 masked
+
+sweeping 32 bit positions x 100 trials = 3200  [fp32, arm=undefended]
+  bit  0 (mantissa) masked  97.0%  detected   0.0%  SDC   3.0%  SDC-crit   0.0%   [100/3200]
+  bit  1 (mantissa) masked  91.0%  detected   0.0%  SDC   9.0%  SDC-crit   0.0%   [200/3200]
+  bit  2 (mantissa) masked  85.0%  detected   0.0%  SDC  15.0%  SDC-crit   0.0%   [300/3200]
+  bit  3 (mantissa) masked  77.0%  detected   0.0%  SDC  23.0%  SDC-crit   0.0%   [400/3200]
+  bit  4 (mantissa) masked  73.0%  detected   0.0%  SDC  27.0%  SDC-crit   0.0%   [500/3200]
+  bit  5 (mantissa) masked  73.0%  detected   0.0%  SDC  27.0%  SDC-crit   0.0%   [600/3200]
+  bit  6 (mantissa) masked  71.0%  detected   0.0%  SDC  29.0%  SDC-crit   0.0%   [700/3200]
+  bit  7 (mantissa) masked  61.0%  detected   0.0%  SDC  39.0%  SDC-crit   0.0%   [800/3200]
+  bit  8 (mantissa) masked  53.0%  detected   0.0%  SDC  47.0%  SDC-crit   0.0%   [900/3200]
+  bit  9 (mantissa) masked  57.0%  detected   0.0%  SDC  43.0%  SDC-crit   0.0%   [1000/3200]
+  bit 10 (mantissa) masked  55.0%  detected   0.0%  SDC  45.0%  SDC-crit   0.0%   [1100/3200]
+  bit 11 (mantissa) masked  57.0%  detected   0.0%  SDC  43.0%  SDC-crit   0.0%   [1200/3200]
+  bit 12 (mantissa) masked  66.0%  detected   0.0%  SDC  34.0%  SDC-crit   0.0%   [1300/3200]
+  bit 13 (mantissa) masked  52.0%  detected   0.0%  SDC  48.0%  SDC-crit   0.0%   [1400/3200]
+  bit 14 (mantissa) masked  50.0%  detected   0.0%  SDC  50.0%  SDC-crit   0.0%   [1500/3200]
+  bit 15 (mantissa) masked  42.0%  detected   0.0%  SDC  58.0%  SDC-crit   0.0%   [1600/3200]
+  bit 16 (mantissa) masked  46.0%  detected   0.0%  SDC  54.0%  SDC-crit   0.0%   [1700/3200]
+  bit 17 (mantissa) masked  33.0%  detected   0.0%  SDC  67.0%  SDC-crit   0.0%   [1800/3200]
+  bit 18 (mantissa) masked  31.0%  detected   0.0%  SDC  69.0%  SDC-crit   0.0%   [1900/3200]
+  bit 19 (mantissa) masked  34.0%  detected   0.0%  SDC  66.0%  SDC-crit   0.0%   [2000/3200]
+  bit 20 (mantissa) masked  34.0%  detected   0.0%  SDC  66.0%  SDC-crit   0.0%   [2100/3200]
+  bit 21 (mantissa) masked  31.0%  detected   0.0%  SDC  69.0%  SDC-crit   0.0%   [2200/3200]
+  bit 22 (mantissa) masked  15.0%  detected   0.0%  SDC  85.0%  SDC-crit   1.0%   [2300/3200]
+  bit 23 (exponent) masked  15.0%  detected   0.0%  SDC  85.0%  SDC-crit   2.0%   [2400/3200]
+  bit 24 (exponent) masked   7.0%  detected   0.0%  SDC  93.0%  SDC-crit   2.0%   [2500/3200]
+  bit 25 (exponent) masked   5.0%  detected   0.0%  SDC  95.0%  SDC-crit  22.0%   [2600/3200]
+  bit 26 (exponent) masked   7.0%  detected   0.0%  SDC  93.0%  SDC-crit  28.0%   [2700/3200]
+  bit 27 (exponent) masked  15.0%  detected   0.0%  SDC  85.0%  SDC-crit   1.0%   [2800/3200]
+  bit 28 (exponent) masked  20.0%  detected   0.0%  SDC  80.0%  SDC-crit   1.0%   [2900/3200]
+  bit 29 (exponent) masked  17.0%  detected   0.0%  SDC  83.0%  SDC-crit   1.0%   [3000/3200]
+  bit 30 (exponent) masked   0.0%  detected  57.0%  SDC  43.0%  SDC-crit  43.0%   [3100/3200]
+  bit 31 (sign    ) masked  10.0%  detected   0.0%  SDC  90.0%  SDC-crit   2.0%   [3200/3200]
+
+============================================================================
+OVERALL  (weight target, inference mode, bits sweep, fp32, cpu)
+============================================================================
+set               n         masked       detected            SDC   SDC-critical   loss delta
+--------------------------------------------------------------------------------------------
+all bits       3200   1380   43.1%     57    1.8%   1763   55.1%    103    3.2%     5.96e-08
+
+field             n         masked       detected            SDC   SDC-critical   loss delta
+--------------------------------------------------------------------------------------------
+sign            100     10   10.0%      0    0.0%     90   90.0%      2    2.0%     2.98e-07
+exponent        800     86   10.8%     57    7.1%    657   82.1%    100   12.5%     1.79e-07
+mantissa       2300   1284   55.8%      0    0.0%   1016   44.2%      1    0.0%     5.96e-08
+
+bit               n         masked       detected            SDC   SDC-critical   loss delta
+--------------------------------------------------------------------------------------------
+bit 0           100     97   97.0%      0    0.0%      3    3.0%      0    0.0%     5.96e-08
+bit 1           100     91   91.0%      0    0.0%      9    9.0%      0    0.0%     5.96e-08
+bit 2           100     85   85.0%      0    0.0%     15   15.0%      0    0.0%     5.96e-08
+bit 3           100     77   77.0%      0    0.0%     23   23.0%      0    0.0%     5.96e-08
+bit 4           100     73   73.0%      0    0.0%     27   27.0%      0    0.0%     5.96e-08
+bit 5           100     73   73.0%      0    0.0%     27   27.0%      0    0.0%     5.96e-08
+bit 6           100     71   71.0%      0    0.0%     29   29.0%      0    0.0%     5.96e-08
+bit 7           100     61   61.0%      0    0.0%     39   39.0%      0    0.0%     5.96e-08
+bit 8           100     53   53.0%      0    0.0%     47   47.0%      0    0.0%     5.96e-08
+bit 9           100     57   57.0%      0    0.0%     43   43.0%      0    0.0%     5.96e-08
+bit 10          100     55   55.0%      0    0.0%     45   45.0%      0    0.0%     5.96e-08
+bit 11          100     57   57.0%      0    0.0%     43   43.0%      0    0.0%     5.96e-08
+bit 12          100     66   66.0%      0    0.0%     34   34.0%      0    0.0%     5.96e-08
+bit 13          100     52   52.0%      0    0.0%     48   48.0%      0    0.0%     5.96e-08
+bit 14          100     50   50.0%      0    0.0%     50   50.0%      0    0.0%     5.96e-08
+bit 15          100     42   42.0%      0    0.0%     58   58.0%      0    0.0%     5.96e-08
+bit 16          100     46   46.0%      0    0.0%     54   54.0%      0    0.0%     5.96e-08
+bit 17          100     33   33.0%      0    0.0%     67   67.0%      0    0.0%     5.96e-08
+bit 18          100     31   31.0%      0    0.0%     69   69.0%      0    0.0%     5.96e-08
+bit 19          100     34   34.0%      0    0.0%     66   66.0%      0    0.0%     5.96e-08
+bit 20          100     34   34.0%      0    0.0%     66   66.0%      0    0.0%     5.96e-08
+bit 21          100     31   31.0%      0    0.0%     69   69.0%      0    0.0%     5.96e-08
+bit 22          100     15   15.0%      0    0.0%     85   85.0%      1    1.0%     1.19e-07
+bit 23          100     15   15.0%      0    0.0%     85   85.0%      2    2.0%     1.19e-07
+bit 24          100      7    7.0%      0    0.0%     93   93.0%      2    2.0%     1.19e-07
+bit 25          100      5    5.0%      0    0.0%     95   95.0%     22   22.0%     1.19e-06
+bit 26          100      7    7.0%      0    0.0%     93   93.0%     28   28.0%     7.15e-07
+bit 27          100     15   15.0%      0    0.0%     85   85.0%      1    1.0%     1.19e-07
+bit 28          100     20   20.0%      0    0.0%     80   80.0%      1    1.0%     1.79e-07
+bit 29          100     17   17.0%      0    0.0%     83   83.0%      1    1.0%     1.79e-07
+bit 30          100      0    0.0%     57   57.0%     43   43.0%     43   43.0%     1.54e+00
+bit 31          100     10   10.0%      0    0.0%     90   90.0%      2    2.0%     2.98e-07
+
+SDC magnitude (1763 silent failures)
+  eval-loss delta   median 5.960e-08   max 1.539e+00
+  tokens changed    median 6 of 4096   max 4096 of 4096  (100.0%)
+
+3200 trials in 577.0s
+wrote bench/results/sdc/weight-bits-cpu-recheck.json
