@@ -23,15 +23,22 @@ import pytest
 import torch
 
 from bench.sdc_campaign import (
+    ARM_DEFENDED,
+    ARM_UNDEFENDED,
+    CAUGHT,
     CRASH,
     MASKED,
     NONFINITE,
+    REPAIRED,
     SDC,
     Campaign,
     Observable,
     Site,
     bit_field,
+    bit_width,
     classify,
+    classify_defended,
+    format_name,
     observe,
     optimizer_sites,
     pick_site,
@@ -302,6 +309,9 @@ def _args(**kw) -> argparse.Namespace:
         batch_size=4,
         block_size=32,
         target="weight",
+        arm="undefended",
+        dtype="float32",
+        noise_band=0,
     )
     base.update(kw)
     return argparse.Namespace(**base)
@@ -392,3 +402,150 @@ def test_gradient_injection_is_recorded(corpus_exists):
     t = camp.trial("gradient", 30, rng)
     assert t.target == "gradient"
     assert t.site != "<no grad>"
+
+
+# --------------------------------------------------------------------------- #
+# Float formats
+# --------------------------------------------------------------------------- #
+
+
+def test_bf16_keeps_all_eight_exponent_bits_in_half_the_word():
+    """The commercially relevant fact: bf16 buys fp32's dynamic range by
+    spending mantissa, so half its word is exponent or sign."""
+    fields = [bit_field(b, torch.bfloat16) for b in range(16)]
+    assert fields.count("mantissa") == 7
+    assert fields.count("exponent") == 8
+    assert fields.count("sign") == 1
+    assert [bit_field(b, torch.float32) for b in range(32)].count("exponent") == 8
+
+
+def test_fp16_trades_the_other_way():
+    fields = [bit_field(b, torch.float16) for b in range(16)]
+    assert fields.count("mantissa") == 10
+    assert fields.count("exponent") == 5
+
+
+def test_sign_bit_is_always_the_top_bit_of_the_format():
+    for dt in (torch.float32, torch.bfloat16, torch.float16):
+        assert bit_field(bit_width(dt) - 1, dt) == "sign"
+
+
+def test_format_names():
+    assert format_name(torch.float32) == "fp32"
+    assert format_name(torch.bfloat16) == "bf16"
+
+
+def test_bf16_campaign_runs_and_sweeps_sixteen_bits(corpus_exists):
+    camp = Campaign(_args(dtype="bfloat16"))
+    assert camp.width == 16
+    assert camp.fmt == "bf16"
+    rng = np.random.default_rng(21)
+    t = camp.trial("weight", 14, rng)
+    assert t.fmt == "bf16"
+    assert t.field == "exponent"
+
+
+# --------------------------------------------------------------------------- #
+# Defended classification
+# --------------------------------------------------------------------------- #
+
+
+def _g():
+    return _obs(1.5, [1, 2, 3])
+
+
+def test_repair_requires_the_output_to_actually_come_back():
+    """A 'repair' that leaves the answer wrong is not a repair."""
+    assert classify_defended(_g(), _obs(1.5, [1, 2, 3]), None, True, True)[0] == REPAIRED
+    assert classify_defended(_g(), _obs(9.9, [7, 7, 7]), None, True, True)[0] == CAUGHT
+
+
+def test_a_tier_firing_does_not_relabel_a_loud_failure():
+    """Crediting the detector for a NaN the free screen already catches would
+    inflate the delta between the arms with work it did not do."""
+    nan = _obs(math.nan, [1, 2, 3], finite=False)
+    assert classify_defended(_g(), nan, None, True, True)[0] == NONFINITE
+    assert classify_defended(_g(), None, RuntimeError("x"), True, True)[0] == CRASH
+
+
+def test_silent_and_wrong_is_still_sdc_when_no_tier_fires():
+    assert classify_defended(_g(), _obs(1.6, [1, 2, 3]), None, False, False)[0] == SDC
+
+
+def test_masked_stays_masked_when_no_tier_fires():
+    assert classify_defended(_g(), _obs(1.5, [1, 2, 3]), None, False, False)[0] == MASKED
+
+
+# --------------------------------------------------------------------------- #
+# The paired arms, end to end
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def paired(corpus_exists):
+    return Campaign(_args(arm="paired"))
+
+
+def test_integrity_tier_repairs_single_bit_flips_in_stored_state(paired):
+    """An exact integer checksum with locate-and-repair cannot miss a
+    single-bit flip in a single element. If this regresses, the defended arm
+    is misconfigured."""
+    rng = np.random.default_rng(31)
+    outcomes = [paired.trial("weight", 20, rng, ARM_DEFENDED).outcome for _ in range(12)]
+    assert outcomes.count(REPAIRED) >= 10
+    assert SDC not in outcomes
+
+
+def test_the_scan_is_not_skipped_after_the_first_trial(paired):
+    """IntegrityTier.check_now() rate-limits against the last step it scanned,
+    and reset() does not clear that. Passing a constant step made every trial
+    after the first skip its scan and report a false 0% detection rate."""
+    rng = np.random.default_rng(32)
+    first = paired.trial("weight", 20, rng, ARM_DEFENDED)
+    rest = [paired.trial("weight", 20, rng, ARM_DEFENDED) for _ in range(6)]
+    assert first.outcome == REPAIRED
+    assert all(t.outcome == REPAIRED for t in rest)
+
+
+def test_abft_sees_the_corrupted_gemm_output(paired):
+    """Forward hooks fire in registration order, so the injector must attach
+    before ABFT. Attaching ABFT first makes it read the clean tensor and pass
+    every time, which looks like 'ABFT detects nothing'."""
+    rng = np.random.default_rng(33)
+    outcomes = [
+        paired.trial("activation", 31, rng, ARM_DEFENDED).outcome for _ in range(10)
+    ]
+    assert outcomes.count(CAUGHT) >= 5
+
+
+def test_undefended_arm_runs_no_detector(paired):
+    """The headline arm must be genuinely undefended: no tier may fire in it."""
+    rng = np.random.default_rng(34)
+    trials = [paired.trial("weight", 25, rng, ARM_UNDEFENDED) for _ in range(10)]
+    assert all(t.fired_tier == "" for t in trials)
+    assert all(not t.repaired for t in trials)
+    assert REPAIRED not in [t.outcome for t in trials]
+    assert CAUGHT not in [t.outcome for t in trials]
+
+
+def test_pairing_hits_the_same_site_when_the_rng_is_rewound(paired):
+    """This is what makes the two arms comparable at all."""
+    rng = np.random.default_rng(35)
+    for bit in (5, 20, 31):
+        state = rng.bit_generator.state
+        a = paired.trial("weight", bit, rng, ARM_UNDEFENDED)
+        rng.bit_generator.state = state
+        b = paired.trial("weight", bit, rng, ARM_DEFENDED)
+        assert a.site == b.site
+        assert a.value_before == b.value_before
+
+
+def test_defended_arm_leaves_the_model_bit_identical(paired):
+    """Repair writes into the tensor, so the restore path matters more here."""
+    before = {k: v.clone() for k, v in paired.model.state_dict().items()}
+    rng = np.random.default_rng(36)
+    for bit in (0, 20, 30, 31):
+        paired.trial("weight", bit, rng, ARM_DEFENDED)
+    for k, v in paired.model.state_dict().items():
+        if v.dtype.is_floating_point:
+            assert torch.equal(v.view(torch.int32), before[k].view(torch.int32)), k
