@@ -1,0 +1,27 @@
+/opt/pytorch/lib/python3.12/site-packages/torch/cuda/__init__.py:61: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+probing bfloat16 on cpu, 80 clean passes, 20 injected trials per bit
+
+candidate                                             clean FP    bit14    bit13    bit12     bit8     bit0
+-----------------------------------------------------------------------------------------------------------
+(a) current: eps_store, sqrt(K), L1                    0/80       8/20     6/20     6/20     0/20     0/20 
+(b) eps_fp32, sqrt(K), L1                             80/80      20/20    20/20    20/20    20/20    20/20 
+(c) eps_store, sqrt(K), |result|                      80/80      20/20    20/20    20/20    20/20    20/20 
+(d) two-term: eps_store*L1(y) + eps_fp32*sqrt(K)*L1    0/80       9/20     6/20     6/20     2/20     0/20 
+(e) eps_store*L1(y) only, no safety                    0/80       9/20     6/20     6/20     2/20     0/20 
+
+clean residual against each bound, over 2720 checks
+candidate                                             max resid/tol    headroom
+-------------------------------------------------------------------------------
+(a) current: eps_store, sqrt(K), L1                       6.922e-03      144.5x
+(b) eps_fp32, sqrt(K), L1                                 4.536e+02        0.0x
+(c) eps_store, sqrt(K), |result|                          3.388e+01        0.0x
+(d) two-term: eps_store*L1(y) + eps_fp32*sqrt(K)*L1       1.356e-01        7.4x
+(e) eps_store*L1(y) only, no safety                       1.356e-01        7.4x
+
+tolerance as a multiple of a row's L1 magnitude (bfloat16, safety=1.0):
+  (a) current: eps_store, sqrt(K), L1                1.531e-01 x L1   (K=384)
+  (b) eps_fp32, sqrt(K), L1                          2.336e-06 x L1   (K=384)
+  (c) eps_store, sqrt(K), |result|                   6.168e-03 x L1   (K=384)
+  (d) two-term: eps_store*L1(y) + eps_fp32*sqrt(K)*L1 7.815e-03 x L1   (K=384)
+  (e) eps_store*L1(y) only, no safety                7.812e-03 x L1   (K=384)

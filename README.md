@@ -113,10 +113,13 @@ Trust that block over any filename. Results are in the outcome-campaign section 
 
 Consolidated here so they are in one place rather than scattered through the prose.
 
-1. **ABFT does not work in bf16.** Its tolerance is `safety * eps * sqrt(K) * scale`, which
-   at these reduction widths is 2.45x a row's L1 magnitude in bf16 against 3.7e-05 in fp32.
-   The bound exceeds the row it is checking, so nothing can trip it. bf16 is the format the
-   compute path runs in. This is the largest open problem in the repo.
+1. **Checksum ABFT has a precision floor it cannot cross.** The corruption is compared
+   against an output already rounded to the working format, so anything smaller than
+   `eps_store * L1(y)` is indistinguishable from that rounding. In bf16 that is 0.8% of a
+   row's entire L1 magnitude. A `sqrt(K)` double-count on top of it was found and fixed
+   (`_tolerance_terms`), which took bf16 SDC removal from 0.0% to 11.8% and fp32 from
+   96.2% to 100%, but the floor itself is not removable and it is the largest open problem
+   in the repo. bf16 is the format the compute path runs in.
 2. **Compute-path recall is 69.3%**, under the repo's own 70% gate.
 3. **ABFT fires on faults that have no consequence.** It fired on 36.9% of fp32 activation
    trials while 21.5% were actually SDCs. Real faults, no harm, no value delivered.
@@ -408,51 +411,112 @@ The stored-state rows are the easy case and should be read as such. An exact int
 checksum with locate-and-repair cannot miss a single-bit flip in a single element, so 100%
 is the arithmetic working rather than evidence about hard faults.
 
-**The activation rows are the finding, and the bf16 row is a failure.** ABFT removed 96.2%
-of silent corruption in fp32, 8.0% in fp16, and nothing at all in bf16. That ordering is
-not noise and it is not a wiring problem. It follows directly from the tier's own
-tolerance.
+**The activation rows are the finding.** Two separate things are going on in them, and
+they have opposite consequences, so they are reported separately.
 
-`detect/abft.py` sets its rounding-noise bound to `safety * eps * sqrt(K) * scale`, keyed
-to the L1 magnitude of the summed terms. Evaluated at the widths this model uses, the
-tolerance as a multiple of a row's L1 magnitude is:
+#### The floor: checksum ABFT has a precision limit it cannot cross
 
-| dtype | eps | tolerance at K=384 | tolerance at K=1536 |
-|---|---|---|---|
-| fp32 | 1.2e-07 | 3.7e-05 x row L1 | 7.5e-05 x row L1 |
-| fp16 | 9.8e-04 | 0.31 x row L1 | 0.61 x row L1 |
-| bf16 | 7.8e-03 | **2.45 x row L1** | **4.90 x row L1** |
+A checksum compares the same computation two ways. It can only see a discrepancy that
+exceeds the arithmetic's own rounding noise. The output `y` it reads back is **stored** in
+the working format, so each element carries a representation error of up to
+`eps_store * |y_j|`, and summing K of them is bounded by `eps_store * L1(y)`.
 
-In bf16 the detector's own noise bound is larger than the entire row it is checking, so
-no discrepancy can ever exceed it. The failure compounds because the scale is keyed to the
-observed output, which already contains the fault: a corrupted value inflates the L1
-magnitude, which inflates the tolerance, which hides the corruption that inflated it.
+In bf16 that floor is `7.8e-03 * L1(y)`. **A single-element corruption must move a row's
+sum by roughly 0.8% of that row's entire L1 magnitude before it is distinguishable from
+the rounding applied when the output was written.** In a 384-wide or 1536-wide reduction,
+most single-bit corruptions do not come close.
 
-Verified directly and separately from the campaign. Injecting into the top exponent bit of
-an activation, the most damaging single-bit corruption available, ABFT fired on 23 of 25
-trials in fp32, 23 of 25 in fp16, and **0 of 25 in bf16**. A value multiplied by roughly
-2^128 is invisible to the checksum in bf16.
+No tolerance formula recovers this. The information is destroyed when the output is
+rounded to bf16, before the checksum ever runs. **This is a general property of checksum
+ABFT at low precision, not a defect in this implementation.** It gets worse as formats
+narrow, which is the direction the whole industry is moving.
 
-This contradicts a claim in the module's own docstring, which states that the L1
-running-error scaling "is what makes the tier usable in bf16". The measurement says it
-does not. The L1 scaling did fix the fp32 false positives it was introduced for. It did
-not make bf16 workable, and bf16 is the format the compute path actually runs in.
+The floor scales with the format's machine epsilon:
 
-Two further caveats on the defended arm, both unflattering and both left unadjusted.
-ABFT fired on 36.9% of fp32 activation trials while only 21.5% were SDCs, so it also
-caught faults that would have been masked anyway. Those are real faults with no
-consequence, not false positives, but they are not value delivered either. And
-`--target gradient` has no defended arm at all: the integrity tier must run before
-`optimizer.step()`, but a gradient fault only reaches the state through that step. The
-campaign refuses that combination rather than report a number from a known
-false-positive path.
+| format | eps | floor, as a fraction of a row's L1 magnitude |
+|---|---|---|
+| fp32 | 1.2e-07 | 1.2e-07 |
+| fp16 | 9.8e-04 | 9.8e-04 |
+| bf16 | 7.8e-03 | 7.8e-03 |
+
+#### The bug: the shipped bound was sqrt(K) looser than that floor
+
+Sitting on top of the floor was a straightforward error. `_tolerance` used
+`safety * eps_store * sqrt(K) * L1`, which stacks a random-walk multiplier on a
+worst-case scale. An L1 sum is already the worst case over all K terms, so multiplying by
+`sqrt(K)` again double-counts. The random-walk `sqrt(K)` is only correct against an RMS
+scale, and `L1 >= L2 = sqrt(K) * RMS`.
+
+In fp32 that put the bound at 3.7e-05 of a row's L1 magnitude, small enough that nothing
+noticed. In bf16 it put the bound at **2.45**, larger than the entire row being checked,
+so no discrepancy of any size could trip it and the tier detected exactly nothing.
+
+`_tolerance_terms` replaces it with the two errors that actually occur: `eps_store * L1(y)`
+for the stored output, with no `sqrt(K)`, plus `eps_fp32 * sqrt(K) * scale` for the fp32
+comparison itself.
+
+#### What the fix recovers, L4-measured
+
+Same paired campaign, same seeds, same injection sites, re-run with the corrected bound.
+
+| L4-measured, activations | SDC before | SDC after | share of SDC removed | token-changing before | after |
+|---|---|---|---|---|---|
+| fp32 | 21.5% | **0.0%** | 96.2% -> **100%** | 1.8% | **0.0%** |
+| fp16 | 53.8% | **32.4%** | 8.0% -> **39.8%** | 3.8% | **0.0%** |
+| bf16 | 61.4% | **54.2%** | 0.0% -> **11.8%** | 8.2% | **4.6%** |
+
+**Put the bf16 number next to the fp32 number and do not soften it: 11.8% against 100%.**
+The fix is real and it is not a rescue. In bf16 it removes about one silent corruption in
+eight, and it halves the corruption that changes the model's output (8.2% to 4.6%, so
+43.5% of the user-visible cases). The other seven in eight sit under the floor and stay
+there. fp32 is not regressed by the change; it improves from 96.2% to 100%.
+
+The cost is more firing on faults that had no consequence. ABFT now triggers on 49.9% of
+fp32 activation trials while 21.5% were SDCs, up from 36.9%. Those are real faults with no
+effect, not false positives, and they are not value delivered either.
+
+#### The safety constant moved from 16 to 1, and was not tuned to flatter this
+
+That is a large change to a constant, so the selection rule was fixed and written down
+**before** the number was computed, and it reads clean runs only:
+
+> `safety` is the smallest value on a power-of-two ladder for which the worst observed
+> clean residual ratio, over the calibration split alone, sits at or below 0.5.
+
+Injected-trial detection rates were never consulted while choosing it. The rule lives in
+`bench/abft_tolerance_probe.py` as `calibrate()`, so it is applied mechanically rather
+than by judgement.
+
+Applied over 3 seeds x 2 model widths x 3 dtypes, 2040 calibration checks per dtype, the
+worst clean ratio at `safety=1` was 0.088 (fp32), 0.149 (bf16) and 0.144 (fp16). The rule
+returned 1 in every case. It falls from 16 to 1 because the old constant was covering the
+slack in a random-walk **estimate**, and `_tolerance_terms` is not an estimate: its first
+term is a true worst-case bound, so there is no estimator slack left to pad.
+
+Validated on a **disjoint held-out split** of another 2040 checks per dtype, never used
+for calibration: **0/120 passes false-positive, 95% CI [0.0, 3.0]%.** On a separate CPU
+run of 250 clean passes and 4250 checks, fp32 false positives were **0/250, 95% CI
+[0.0, 1.5]%**.
+
+**The CPU calibration transfers to the L4.** This was the open risk, because CPU and
+tensor cores accumulate bf16 differently and the clean residual distribution is exactly
+what the constant depends on. Measured on the L4 over 2720 clean checks, the worst clean
+ratio against the shipped bound was 0.136 in bf16 and 0.061 in fp32, giving 7.4x and 16.4x
+headroom against CPU's 6.4x and 11.7x. Both sit far below the 0.5 target, so the L4 would
+have selected `safety=1` as well. No adjustment was needed and none was made.
+
+Two limits already published in this README apply to these rows and are not repaired by
+this campaign: compute-path recall of 69.3% sits below the repo's own 70% gate, and ABFT
+false positives at 768 dimensions are disclosed and unfixed.
 
 Both tiers ran at their ceiling here: the integrity tier scanned every step and ABFT
 sampled every Linear. The shipping configuration samples less and costs the 25.7% in the
-gate scoreboard above. Nothing here measures overhead. Two limits already published in
-this README apply to these rows and are not repaired by this campaign: compute-path recall
-of 69.3% sits below the repo's own 70% gate, and ABFT false positives at 768 dimensions
-are disclosed and unfixed.
+gate scoreboard above. Nothing here measures overhead.
+
+`--target gradient` has no defended arm at all: the integrity tier must run before
+`optimizer.step()`, but a gradient fault only reaches the state through that step. The
+campaign refuses that combination rather than report a number from a known false-positive
+path.
 
 ### CPU against L4, same seed
 
@@ -495,10 +559,12 @@ and much of the on-chip logic carry no ECC at all.
 5. One model at 10.72M parameters, one seed, one workload. Not a frontier model.
 6. The defended arm measures detection at the ceiling, not the shipping sample rates, and
    says nothing about overhead.
-7. ABFT does not work in bf16 at these reduction widths, and bf16 is the compute path.
-   The integrity tier is unaffected, because it checksums stored state as integers rather
-   than reconstructing a float reduction. Until the ABFT tolerance is reworked, the
-   compute path has no working detector in the format it actually runs in.
+7. ABFT has a precision floor at `eps_store * L1(y)` that no tolerance can cross, because
+   the corruption is compared against an output whose low bits were destroyed when it was
+   stored. After the two-term bound fix it removes 100% of fp32 activation SDC, 39.8% in
+   fp16 and 11.8% in bf16. bf16 is the compute path, so most silent compute corruption
+   there remains undetectable by checksum ABFT. The integrity tier is unaffected: it
+   checksums stored state as integers rather than reconstructing a float reduction.
 
 ### Reproduce
 
