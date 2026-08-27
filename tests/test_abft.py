@@ -7,7 +7,7 @@ import pytest
 import torch
 from torch import nn
 
-from orbital_runtime.detect.abft import AbftTier, _tolerance
+from orbital_runtime.detect.abft import AbftTier, _tolerance, _tolerance_terms
 from orbital_runtime.inject.memory import flip_bit
 from orbital_runtime.orbit.flux import FluxModel
 from orbital_runtime.orbit.track import OrbitTrack
@@ -185,22 +185,29 @@ def test_detects_every_bit_down_to_the_noise_floor(bit):
     assert tier.stats.mismatches >= 1, f"missed a bit-{bit} strike"
 
 
-@pytest.mark.parametrize("bit", [12, 10, 8, 5, 0])
+@pytest.mark.parametrize("bit", [9, 8, 5, 0])
 def test_low_mantissa_strikes_are_below_the_noise_floor_and_missed(bit):
     """Honesty: the sensitivity limit, asserted rather than hidden.
 
-    Measured floor for fp32 Linear weights: ABFT catches bits >= 15
-    (relative perturbation >= ~3e-3) and misses bits <= 12 (<= ~4e-4). So
-    it covers 17 of 32 bit positions.
+    RE-MEASURED after `_tolerance_terms` replaced the single-term bound. On
+    this fp32 fixture, 40 seeds per bit: bits <= 9 are missed entirely, bits
+    10-18 are caught partially (8/40 rising to 38/40), and bits >= 19 are
+    caught 40/40. The floor moved down about five bit positions.
 
-    This is not a defect to be tuned away. Below the floor the perturbation
-    is indistinguishable from the GEMM's own rounding noise, and claiming to
-    catch it would mean claiming to beat floating-point arithmetic. Lowering
-    the threshold to reach these bits would simply trade them for false
-    positives on every clean step. The saving grace is that the same tiny
-    magnitude that hides them also makes them nearly harmless -- and what
-    accumulation of them CAN do (silent drift) is what tier 1's z-score and
-    M3's verified checkpoints are for.
+    It moved because the old bound was loose, not because the noise changed.
+    An earlier version of this docstring claimed that "lowering the threshold
+    to reach these bits would simply trade them for false positives on every
+    clean step". That is false and was never measured: the tighter two-term
+    bound reaches bits 10-18 with 0 false positives in 1200 clean forwards
+    across 60 seeds on this same fixture.
+
+    What remains below bit 10 is a real floor and is not tunable. There the
+    perturbation is genuinely indistinguishable from the arithmetic's own
+    rounding, and claiming to catch it would mean claiming to beat floating
+    point. The saving grace is unchanged: the same tiny magnitude that hides
+    these strikes also makes them nearly harmless, and what an accumulation of
+    them CAN do (silent drift) is tier 1's z-score and M3's verified
+    checkpoints.
     """
     torch.manual_seed(0)
     net, x = Net(), torch.randn(8, 32)
@@ -405,18 +412,27 @@ def test_tolerance_is_keyed_to_l1_not_post_reduction_magnitude():
         lhs = lin(x).to(torch.float32).sum(dim=-1)
         rhs = x.to(torch.float32) @ s
         residual = (lhs - rhs).abs()
-        coeff = _tolerance(torch.float32, k, 1.0, tier.safety_factor)
+        l1_y = lin(x).to(torch.float32).abs().sum(dim=-1)
+        l1 = torch.maximum(l1_y, x.to(torch.float32).abs() @ s.abs())
+        l1 = torch.maximum(l1, torch.tensor(1e-8))
 
+        # The |result|-keyed form the L1 scaling replaced, built with the same
+        # two-term bound so only the SCALE differs between the two ratios.
         value_scale = torch.maximum(
             torch.maximum(lhs.abs().max(), rhs.abs().max()), torch.tensor(1e-8)
         )
-        ratio_value = float((residual.max() / (value_scale * coeff)))
-
-        l1 = torch.maximum(
-            lin(x).to(torch.float32).abs().sum(dim=-1),
-            x.to(torch.float32).abs() @ s.abs(),
+        tol_value = _tolerance_terms(
+            torch.float32, k, float(value_scale), float(value_scale),
+            tier.safety_factor,
         )
-        ratio_l1 = float((residual / (torch.maximum(l1, torch.tensor(1e-8)) * coeff)).max())
+        ratio_value = float(residual.max() / tol_value)
+
+        tol_l1 = torch.stack([
+            torch.tensor(_tolerance_terms(
+                torch.float32, k, float(a), float(b), tier.safety_factor))
+            for a, b in zip(l1_y.reshape(-1), l1.reshape(-1))
+        ]).reshape(l1.shape)
+        ratio_l1 = float((residual / tol_l1).max())
 
     assert stored_ratio == pytest.approx(ratio_l1, rel=1e-4)
     # L1 is the looser (correct) bound: strictly below the |result| ratio, and

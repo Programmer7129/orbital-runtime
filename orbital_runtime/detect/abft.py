@@ -124,7 +124,24 @@ from .verdict import NO_DETECTION, REASON_ABFT_MISMATCH, TIER_ABFT, Verdict
 # walk), so a safety factor absorbs its slack. 16 was chosen by measuring
 # the observed clean-run residual distribution against the bound -- see
 # tests/test_abft.py::test_clean_residual_sits_far_below_tolerance.
-DEFAULT_SAFETY_FACTOR = 16.0
+# Multiplies the whole of `_tolerance_terms`. 1.0, not the 16.0 the old
+# single-term bound used, and the change is deliberate rather than a loosening
+# by accident.
+#
+# 16.0 existed to cover the slack in a random-walk ESTIMATE. `_tolerance_terms`
+# is not an estimate: term 1 is a true worst-case bound (eps * L1 bounds the
+# total representation error outright), so there is no estimator slack left to
+# pad.
+#
+# Calibrated mechanically, on clean runs only, by a rule fixed before the
+# number was computed: the smallest value on a power-of-two ladder whose worst
+# observed clean residual ratio sits at or below 0.5. Injected-trial detection
+# rates were never consulted. Over 3 seeds x 2 model widths x 3 dtypes, 2040
+# calibration checks each, the worst clean ratio at safety=1 was 0.088 (fp32),
+# 0.149 (bf16) and 0.144 (fp16), so the rule returned 1 in every case. On a
+# disjoint held-out split of another 2040 checks per dtype the false-positive
+# rate was 0/120 passes, 95% CI [0.0, 3.0]%. See bench/abft_tolerance_probe.py.
+DEFAULT_SAFETY_FACTOR = 1.0
 
 # Fraction of eligible GEMMs verified per step when NOT in the SAA.
 DEFAULT_BASE_SAMPLE_RATE = 0.1
@@ -134,13 +151,57 @@ DEFAULT_SAA_SAMPLE_RATE = 1.0
 
 
 def _tolerance(dtype: torch.dtype, k: int, scale: float, safety: float) -> float:
-    """Rounding-noise bound for a K-term reduction at a given magnitude.
+    """Legacy single-term bound. Superseded by `_tolerance_terms`, kept because
+    `bench/coverage_audit.py` reports sensitivity in these terms.
 
     eps * sqrt(K) * scale is the standard random-walk estimate of
     accumulated rounding error; `safety` covers the estimate's slack.
+
+    Do not use this for new detection paths. Applied to an L1 `scale` it
+    overstates the bound by exactly sqrt(K); see `_tolerance_terms`.
     """
     eps = float(torch.finfo(dtype).eps)
     return safety * eps * math.sqrt(max(k, 1)) * scale
+
+
+def _tolerance_terms(
+    store_dtype: torch.dtype, k: int, l1_y: float, scale: float, safety: float
+) -> float:
+    """Rounding-noise bound, split into the two errors that actually occur.
+
+    The comparison reduces in fp32 (see `_verify`), but the output `y` it reads
+    is STORED in the working dtype. Those are different error sources and they
+    need different epsilons:
+
+      term 1, output representation.  Each stored y_j carries up to
+      eps_store * |y_j|. Summing K of them is bounded by
+      eps_store * sum|y_j| = eps_store * L1(y). NO sqrt(K) belongs here. An L1
+      sum is ALREADY the worst case over all K terms, and multiplying it by
+      sqrt(K) as well double-counts. The random-walk sqrt(K) is correct only
+      against an RMS scale, and L1 >= L2 = sqrt(K) * RMS.
+
+      term 2, comparison accumulation.  The fp32 reduction and matvec on both
+      sides, which is the classic eps * sqrt(K) * scale random walk, at fp32
+      epsilon because that is the precision the comparison runs in.
+
+    The old single-term form used eps_STORE * sqrt(K) * L1, which stacks a
+    random-walk multiplier on a worst-case scale and pays the storage epsilon
+    twice over. In fp32 that is 3.7e-05 of a row's L1 magnitude, small enough
+    that nothing noticed. In bf16 it is 2.45, LARGER THAN THE WHOLE ROW, so no
+    discrepancy of any size could ever exceed it and the tier detected exactly
+    nothing. That is the bug this function fixes, and it is worth sqrt(K).
+
+    It does NOT make the tier equivalent in bf16. Term 1 is irreducible: the
+    corruption is compared against an output whose low bits were destroyed when
+    it was rounded to bf16, so a fault smaller than eps_store * L1(y) is not
+    distinguishable from that rounding by ANY threshold. That is a property of
+    checksum ABFT at low precision, not of this implementation.
+    """
+    eps_store = float(torch.finfo(store_dtype).eps)
+    eps_acc = float(torch.finfo(torch.float32).eps)
+    return safety * (
+        eps_store * l1_y + eps_acc * math.sqrt(max(k, 1)) * scale
+    )
 
 
 @dataclass
@@ -347,7 +408,12 @@ class AbftTier:
         # without an early host sync (item 17: one formula, no inlined
         # duplicate). Reduce to the worst-row ratio here -- still a device
         # tensor -- so `_resolve_pending` syncs once for all checks.
-        tol = scale * _tolerance(x_.dtype, k, 1.0, self.safety_factor)
+        # Two-term bound. `l1_lhs` is L1(y), the stored output whose
+        # representation error term 1 covers; `scale` is the cancellation-
+        # invariant running-error scale term 2 keys to.
+        tol = _tolerance_terms(
+            y_.dtype, k, l1_lhs, scale, self.safety_factor
+        )
         ratio = (residual / tol).max()
 
         self._pending.append((name, ratio, k, str(x_.dtype).replace("torch.", "")))
