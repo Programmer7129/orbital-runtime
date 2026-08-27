@@ -1,242 +1,185 @@
 # orbital-runtime
 
-**A software runtime that makes commercial GPUs survive radiation-induced faults in orbit.**
-Calibrated fault injection at published LEO upset rates → three-tier detection → orbit-aware
-checkpointing → invisible job recovery. *"ECC memory for the orbital era, sold as software."*
+**A software runtime that keeps commercial GPUs computing correctly through radiation in orbit.**
 
-Commercial GPUs are going to orbit by the thousands (Starcloud, Google Suncatcher, Axiom,
-SpaceX filings). Cosmic radiation flips their bits and crashes their jobs, and no independent
-vendor sells the software layer that keeps a COTS GPU workload alive through it. This repo
-proves the concept end-to-end **in simulation**: a real PyTorch training run dies from
-single-event upsets injected at flight-data rates; the *same* run under this runtime survives
-with low overhead. Every number in the physics is calibrated and citable, not invented.
+Datacenter GPUs are going to orbit by the thousands (Starcloud, Google Suncatcher, Axiom, SpaceX
+filings). Cosmic radiation corrupts their computation. Error-correcting memory catches part of it.
+Nothing protects the job itself.
+
+This runtime wraps an **unmodified PyTorch job**. It injects faults at published orbital rates,
+detects the corruption that results, **repairs most of it in place**, and rolls back only when it
+cannot. Every physics constant traces to a citation.
+
+![Steadstar architecture](docs/assets/architecture.svg)
 
 ---
 
-## The demo — "90 minutes in orbit, 90 seconds on screen"
+## The idea that makes it work
 
-```bash
-make venv install     # one-time: create .venv, install the package + dev deps
-demo/run_demo.sh       # trains 3 runs, builds the dashboard, opens it
-```
+Detection is not the hard part. **Response** is.
 
-`run_demo.sh` trains three **identical** seeded nanoGPT runs that differ only in radiation and
-protection, then opens a split-screen mission-control dashboard
-(`demo/dashboard/index.html` — self-contained local HTML/JS, no server, no CDN):
+A rollback throws away the model, reloads a checkpoint, and redoes every step since — while
+radiation keeps arriving. At 85 million parameters that cost 76 replayed steps and the run still
+died.
 
-- an **orbit + SAA** view (satellite crossing the South Atlantic Anomaly, upsets flashing),
-- **live counters** (upsets injected / detected / rolled back / steps replayed),
-- **dual loss curves** (protected vs unprotected vs clean baseline), and
-- a scrolling **recovery event log** + wall-clock overhead ticker.
+So the runtime does not roll back for a single corrupted number. It **finds that number and undoes
+it**. Two checksums over the same tensor are enough: the plain sum says something changed, and the
+index-weighted sum divided by it says exactly where.
 
-The unprotected run's loss looks perfectly healthy — then a bit flip NaNs it. The protected run
-takes the same bombardment, detects the strikes that would propagate, rolls back to a verified
-checkpoint each time, replays, and **finishes.** The unprotected run dies; the protected run lives.
+![Repair instead of rollback](docs/assets/repair.svg)
 
-The **committed dashboard** (`demo/dashboard/telemetry_data.js`) is the **NVIDIA L4 calibrated-rate
-mission** (seed 3, 300 steps, 1e-7/bit-day — no elevation; unprotected dies at step 179, protected
-completes 300/300; see the real-scale results below). `run_demo.sh` is the **no-GPU reproducer**: on
-a Mac it retrains a laptop-scale version (seed 1337, 0.81M params, compensated 3e-6 rate — unprotected
-dies ~step 141) in **under a minute**, deterministically. Both stories are the same mechanism at two
-scales; the honest disclosure of the laptop rate is in `run_demo.sh` and the honesty flags.
+Measured on an NVIDIA L4 at 85.3M parameters under 49 radiation hits: **39 of 42 corruptions
+repaired exactly, 3 needed a rollback, the run completed.**
 
 ---
 
 ## Headline results
 
-### Real scale — NVIDIA L4 24GB, at the CALIBRATED flight-band rate (M4b)
+Measured on a rented **NVIDIA L4 24GB**, **85.3M-param GPT-2-class nanoGPT**, 8.19e9 resident bits,
+300 steps, one orbit, at the **calibrated 1e-7 upsets/bit-day flight rate with no elevation.**
 
-Re-measured on a rented **NVIDIA L4 24GB** (ECC on), an **85.3M-param GPT-2-class nanoGPT**
-holding **8.19e9 resident bits** (~100× the laptop demo model). At this scale the **calibrated
-1e-7 upsets/bit-day rate — the top of the flight band, with no elevation at all — kills the
-unprotected run on its own.** The demo no longer needs a compensated rate.
+| | Unprotected | Protected |
+|---|---|---|
+| Outcome | **DIED — nan_loss at step 73** | **COMPLETED 300/300** |
+| Upsets delivered | 2 | **49** (43 in the SAA) |
+| Corruptions repaired in place | — | **39 of 42** |
+| Rollbacks | — | 3 |
+| Steps replayed | — | 25 |
 
-**Calibrated-rate mission (seed 3, 300 steps, 4 orbits, rate 1e-7, NVIDIA L4):**
+Both runs face a **bit-identical bombardment** drawn before step 0 from named RNG streams, so
+protection cannot change the radiation. It is a controlled experiment, not a demo.
 
-| Run | Radiation | Outcome | Final val loss |
+### Detector recall, by measured GPU fault class
+
+Recall is reported per class, because a blended number hides the class that dominates real faults.
+
+| Path / class | Detection | Escalation | Missed |
 |---|---|---|---|
-| clean baseline | none | completed 300/300 | **2.5160** |
-| `--protect off` | 1e-7/bit-day (calibrated) | **DIED (NaN) at step 179** | ∞ |
-| `--protect on` | 1e-7/bit-day (calibrated) | **COMPLETED 300/300** | **2.6275** |
+| memory / nullification | **100%** | 82.5% | 0 |
+| memory / bit flip | **100%** | 11.7% | 0 |
+| memory / special (NaN) | **100%** | 96.2% | 0 |
+| compute / nullification | 97.5% | 97.5% | 3 |
+| compute / bit flip | **39.2%** | 39.2% | 73 |
+| compute / special (NaN) | **100%** | 100% | 0 |
 
-Unprotected: 128 upsets (114 in SAA), then NaN death. Protected: absorbed **326 upsets** (302 in
-SAA — it flies a longer, replayed mission), **10 detected → 10 rolled back** (8 ABFT · 2 guard),
-141 steps replayed, and finished. The committed dashboard (`demo/dashboard/telemetry_data.js`) is
-this exact run. Model config: **n_layer=12, n_head=12, n_embd=768, block_size=256**.
+**Memory path: 100% share-weighted. Compute path: 69.3%.**
 
-> ⚠️ **This frozen L4 bundle predates the review's recovery fixes (items 6 & 7).** It was produced
-> on the rented GPU (now gone) by the M4b code, *before* the rollback-resume off-by-one and
-> detection-ordering fixes landed. Those fixes shift the exact rollback / replayed-step counts (the
-> laptop rerun moved 7/105 → 8/111), so a fresh GPU rerun would report slightly different counts here
-> too. The *semantic* story — unprotected dies at the calibrated rate, protected survives — is
-> unchanged, and is what the dashboard shows. The counts above are labelled M4b-as-measured and will
-> be regenerated on the next GPU session; they are not silently presented as current-code output.
+Detection and escalation are separate columns on purpose. A fault that is repaired or deliberately
+absorbed was **seen**. Counting it as a miss would be dishonest in the flattering direction.
 
-**Detection-only overhead** (radiation off — the cost of *looking*), **NVIDIA L4, 85.3M params,
-block_size=64** (note: a different config from the block_size=256 wall-clock table below — the two
-are not directly comparable):
+---
 
-| Config | NVIDIA L4 24GB (85.3M) |
+## Gate scoreboard
+
+Thresholds were set **before** measurement, and two of them fail.
+
+| Gate | Target | Result | |
+|---|---|---|---|
+| Fault model matches published data | ±1.5pp | **±0.22pp** | ✅ |
+| Coverage of strikeable state | ≥90% | **100%** (was 29.8%) | ✅ |
+| Memory-path recall | ≥70% | **100%** | ✅ |
+| Headline: protected run survives | required | **300/300** | ✅ |
+| Compute-path recall | ≥70% | **69.3%** | ❌ |
+| Protection overhead | <10% | **25.7%** | ❌ |
+
+The 70% floor is NVIDIA's own EUD diagnostic recall in ByteDance production (SOSP '25). The point of
+publishing a failing scoreboard is that a passing one you cannot check is worth nothing.
+
+---
+
+## What changed, and why
+
+Four defects were found by measuring rather than assuming. Each would have been found by a hostile
+reviewer instead.
+
+**1. Two thirds of the target surface had no detector.** ABFT verifies `nn.Linear` weights. Adam
+keeps `exp_avg` and `exp_avg_sq` per parameter, so optimizer state is **66.7% of every strikeable
+bit** — and it was unwatched. Worse, a flip there flowed into the weights at the next
+`optimizer.step()`, and `refresh_checksums()` then recorded that corrupted weight as trusted. The
+fault laundered itself into ground truth.
+
+A new **integrity tier** (`detect/integrity.py`) closes it with exact integer checksums. Summing the
+integer view is bitwise exact, so there is no tolerance for a fault to hide under.
+
+**2. The fault model simulated the wrong failure.** The injector produced only memory bit flips.
+Tung et al. (NVIDIA, DSN 2026) measured 600 million real GPU corruptions: **50.68% are
+nullification** — a value zeroed — which a bit-flip model cannot produce at all. The injector was
+tested against the minority case.
+
+`inject/gpu_model.py` now reproduces the published distribution, split by path:
+
+| Outcome | Ours | Published | Δ |
+|---|---|---|---|
+| Nullification | 50.90% | 50.68% | +0.22pp |
+| Bit flip | 48.17% | 48.31% | −0.14pp |
+| NaN / ±INF | 0.93% | 1.01% | −0.08pp |
+
+`bench/fault_model_audit.py` exits non-zero if this drifts. It is CI-able.
+
+**3. The old model was ~25× too lethal.** Bit positions were drawn uniformly, putting ~25% of flips
+in the fp32 exponent. The measured NaN share is 1.01%. Correcting it dropped per-event lethality by
+about 25×, and several earlier claims rested on the inflated number.
+
+**4. Perfect detection without a response policy was harmful.** The exact checksum caught a bit-2
+flip in an Adam second moment — a 5e-7 relative change — and paid a full rollback for it. Radiation
+lands during the replay, so it rolled back again. Dead at step 112 of 300, from five negligible
+upsets.
+
+Fixed three ways: repair-in-place removes most rollbacks, a severity policy absorbs what physics
+says will decay, and the checkpoint history went from 2 slots to 4 (two consecutive rollbacks used
+to exhaust it entirely — that was the true cause of "unrecoverable").
+
+---
+
+## The overhead problem, and the plan
+
+Protection costs **25.7%**, against a target under 10%. That is the worst-performing gate. The cost
+is not the checksums themselves — it is how many times the runtime walks the data.
+
+![Overhead optimization plan](docs/assets/overhead-plan.svg)
+
+Three measured findings:
+
+1. The weighted checksum costs **3× the plain one**, because it builds an index list as large as the
+   data itself — 80 MB allocated and discarded, four times per step.
+2. The runtime makes **4 full passes** over ~1 GB of state per step. Two are unavoidable (a before
+   and an after). Two exist only because the plain and weighted sums are computed separately.
+3. There are **304 separate GPU calls** per pass, at roughly 22 µs of launch overhead each.
+
+The fix removes the index list rather than optimizing it. Laid out as a grid instead of a line, a
+position is just a row and a column, so the index arrays shrink to the square root of the data —
+**9,200 labels instead of 85,000,000, a 1,581× reduction.** Row and column sums then yield *both*
+checksums from one structured pass, and the plain sum is free (`plain = sum(row sums)`).
+
+| Change | Effect |
 |---|---|
-| A/A control (noise floor) | 0.4% |
-| tier 1 guards | below noise |
-| tier 1 + 2, **adaptive** sampling | **+1.6% ✓** |
-| tier 1 + 2 @ 100% sampling | +5.4% ✓ |
+| Grid decomposition | **1.56× faster**, measured |
+| One pass yields both sums | 4 passes → 2 |
+| Batch the small tensors | 304 calls → a handful |
+| **Projected** | **25.7% → 8–12%** |
 
-Better than the MPS figure, exactly as predicted: ABFT is kernel-launch-bound and the cost
-amortizes as GEMMs grow — at real scale even **100% sampling meets the <10% target**.
+Status: **researched and measured, not yet implemented.**
 
-**Protected-run WALL-CLOCK overhead at calibrated rates** (incl. DCP checkpoint I/O + replay —
-*never measured before M4b*), **NVIDIA L4, block_size=256** (seed 3, 150 steps, 4 orbits):
+---
 
-> ⚠️ **These are single-seed, 2-repeat *indicative* numbers — a proper controlled rerun is pending.**
-> They were taken without interleaving and without an A/A noise-floor control, which violates the
-> project's own overhead-honesty rule (design rule 4). The controlled replacement —
-> `bench/protect_overhead_calibrated.py`, ≥5 round-robin repeats + A/A control — is written and
-> ready for the next GPU session; treat the percentages below as order-of-magnitude, not measured.
+## Running it yourself
 
-| Rate (upsets/bit-day) | Wall-clock overhead | Rollbacks | Steps replayed | Final val loss | Outcome |
-|---|---|---|---|---|---|
-| 1e-9 | +27.9% | 1 | 10 | 2.559 | survived, clean |
-| 1e-8 | +64.0% | 3 | 20 | 2.560 | survived, clean |
-| 1e-7 | +139.6% | 9 | 64 | **4.038** | survived, **degraded** |
+```bash
+make venv install     # .venv + editable install + dev deps
+make test             # full suite, ~40 s
+demo/run_demo.sh      # three runs + dashboard (NO_OPEN=1 to skip auto-open)
 
-This is the honest full-cost number the M2 table excludes. It is dominated **not by detection
-(+1.6%) but by full-model checkpoint I/O + replay** — the genuine price of turning the unprotected
-run's death into survival. Checkpoint cadence is a tunable knob; the replay share scales with how
-much real corruption actually landed.
+# the audits that make the numbers checkable
+python bench/coverage_audit.py       # what the detectors can structurally see
+python bench/fault_model_audit.py    # injector vs published GPU distribution; non-zero exit on drift
+python bench/recall_by_class.py      # what they actually catch, per fault class
 
-⚠️ **"Survived" is not the whole story at the band top.** At 1e-7 the protected run *completes*, but
-finishes at val **4.038** against the ~2.56 the 1e-9/1e-8 runs reach — it is **degraded, not
-recovered.** This is the M3 sub-detection-floor mechanism: strikes on ABFT-invisible low bits (≤ bit
-12, relative perturbation < 4e-4) sit below the checksum's noise floor, get baked into checkpoints,
-and accumulate; rollback cannot undo what nothing detected. At the calibrated flight band (1e-9/1e-8)
-it is negligible; at the band *top* it is visible, and it is reported, not tuned away.
+# sweep the knobs
+.venv/bin/python -m orbital_runtime.run --rate 1e-7 --protect on --orbits 1 --steps 300
+```
 
-**Detector precision / recall at demo scale** (85.3M params, block_size=64, calibrated 1e-7, 6 seeds), **NVIDIA L4**:
-
-| Tiers | Precision (irradiated) | Recall | Median latency |
-|---|---|---|---|
-| tier 1 guards | 1.00 | 1.00 | 9 steps |
-| tier 1 + 2 (guards + ABFT) | 1.00 | 1.00 | **4 steps** |
-
-Recall holds at 1.00 at real scale, ABFT-driven (first detection is `abft_mismatch` on 6/6);
-6/6 irradiated runs corrupted. The M4b scale-dependent false-positive (ABFT tripping on 3/6 *clean*
-768-dim runs) is **fixed in M4c** by the V-ABFT running-error/L1 tolerance — re-measured on MPS at
-768-dim, clean-run FPs are **0/6** with recall still 1.00 (`bench/results/detect-eval-mps-768.json`;
-see honesty flags).
-
-Raw JSON: `bench/results/*_l4.json` (GPU) and `detect-eval-mps-768.json` (the M4c FP-fix re-measure).
-
-### Laptop demo (no GPU) — seed 1337, 0.81M-param nanoGPT, 200 steps, 2 orbits, MPS/CPU
-
-| Run | Radiation | Outcome | Final val loss |
-|---|---|---|---|
-| clean baseline | none | completed 200/200 | **2.4304** |
-| `--protect off` | 3e-6/bit-day | **DIED (NaN) at step 141** | ∞ |
-| `--protect on` | 3e-6/bit-day | **COMPLETED 200/200** | **2.4304** |
-
-Protected run: **49 upsets absorbed, 8 detected** (6 ABFT · 2 guard), **8 rollbacks, 111 steps
-replayed**, ABFT sampling 19.1% average. Recovered a model **indistinguishable from the run that
-was never irradiated** (2.4304 vs 2.4304, to four decimals). *(These counts are the current code's;
-they shifted from the M3-era 7/7/105 after the review's rollback-resume and detection-ordering fixes
-— items 6 & 7 — which is why they are regenerated from a fresh rerun, not carried over.)*
-
-> **Determinism, stated precisely (review item 5).** The demo is *semantically* deterministic on
-> every backend — same 49 upsets, same death step 141, same 8 rollbacks / 111 replayed steps, same
-> event structure, every run. It is *byte*-deterministic (identical `telemetry_data.js` sha256 across
-> reruns) **only on `--device cpu`**, which is verified; on MPS the nondeterministic float reductions
-> drift the loss values at the ULP, so two MPS runs match the whole story but not every byte. The
-> wall-clock fields — the only other nondeterministic content — are stripped from the bundle, so the
-> byte-exactness on CPU is real and not an artifact of a frozen timestamp.
-
-> ⚠️ **The 3e-6 rate is ~300× the calibrated flight band, and this is disclosed everywhere it
-> appears.** The demo model holds 7.8e7 resident bits against an H100's 6.4e11 — four orders of
-> magnitude fewer bits to hit — so a flight-band rate delivers almost nothing in 200 steps. The
-> *rate band itself* is asserted against real H100 bit counts in `tests/test_flux.py`; the
-> per-tier overhead below is measured at the true rate. **Headline numbers at real scale are M4b
-> (a rented GPU), not this laptop.**
-
-### Detection — precision / recall vs known injected faults (tiny model, 12 seeds, CPU)
-
-*(Tiny 1-layer/32-dim model; the L4 demo-scale re-measurement is in the real-scale section above.)*
-
-| Tiers | Precision | Recall | Median latency |
-|---|---|---|---|
-| tier 1 (finite/z-score/loss-spike guards) | 1.00 | 0.83 | 24 steps |
-| tier 1 + 2 (guards + ABFT) | **1.00** | **1.00** | **2 steps** |
-
-Zero false positives across 12 clean runs (and, since M4c's V-ABFT L1 tolerance, **0/6 at 768-dim
-too** — the wide-reduction false positive is fixed). Ground truth is *exact*, not thresholded:
-determinism gives a free oracle — the first step where a rate-0 and an irradiated run's losses
-diverge is, by construction, the first fault that **propagated**, so recall is measured only
-against faults that can actually hurt the model (a ReLU-masked upset is never scored as a miss).
-
-### Overhead per tier — dev machine MPS/CPU (measured, with an A/A noise-floor control)
-
-*(Dev-machine MPS/CPU, all block_size=64; the NVIDIA L4 detection-only overhead is +1.6% adaptive — real-scale section above.)*
-
-| Config | CPU (0.81M) | MPS (0.81M) | MPS (10.7M) |
-|---|---|---|---|
-| A/A control (noise floor) | 0.1% | 0.8% | 0.3% |
-| tier 1 guards | below noise | below noise | below noise |
-| tier 1 + 2, **adaptive** sampling | **+4.7% ✓** | +22.3% | **+5.4% ✓** |
-| tier 1 + 2 @ 100% sampling | +13.1% | +127.6% | +36.3% |
-
-Tier 1 is genuinely free. The **<10% target is met at scale** (+5.4% on 10.7M params) precisely
-because of **adaptive vigilance**: ABFT sampling is keyed to orbital position, covering the SAA —
-where ~90% of upsets land — completely, at 19% *average* sampling. 100% sampling never meets the
-target; that gap is the quantitative case for position-aware protection.
-
-*(The CPU column was regenerated with `make bench` and carries its config + torch version inside
-`bench/results/overhead-cpu.json` (item 19); it moved from an earlier, noisier run's +7.2%/+15.0%
-— same qualitative verdict. The MPS columns are the frozen M2 measurement, kept and labelled as
-such; their model dims predate the in-JSON config block.)*
-
-### Environment calibration (H100-class, 6.4e11 resident bits)
-
-| Base rate (upsets/bit-day) | Upsets/day | Mean interval | SAA share |
-|---|---|---|---|
-| 1e-9 | 640 | 135 s | 89.8% |
-| 1e-8 (default) | 6,400 | 13.5 s | 89.8% |
-| 1e-7 | 64,000 | 1.4 s | 89.8% |
-
-The 89.8% SAA share (default 75× multiplier) lands inside the **80–97% band from flight data**
-and reproduces Proba-II's observed ~90%. Daily total is invariant to the multiplier — the SAA
-*redistributes* upsets in time, it does not manufacture them.
-
-### Radiation channels beyond single-bit flips (M4c — SEFI, MBU, ECC redistribution)
-
-The bit-flip-only model was incomplete against every source that measured the alternatives. The
-beam-data audit (`docs/research/beam-calibration-audit.md`) closed three gaps with cited anchors:
-
-- **SEFIs — process crashes/hangs, now ON by default.** Suncatcher (arXiv 2511.19468, 67 MeV
-  protons, UC Davis Crocker) measured SEFI σ = 2e-11 cm²/chip against SDC σ = 6–9e-9 cm²/chip — a
-  fluence-independent ratio of ~1 functional interrupt per ~375 silent-corruption events. The SEFI
-  channel rides the same SAA proton stream at that cross-section ratio (`SefiInjector.from_flux`),
-  so it is calibrated, not invented. A SEFI raises `SefiCrash` and takes the process-restart
-  recovery path. *(The raw `SefiInjector(track)` still defaults to p=0 so tests can isolate the
-  memory channel; the calibrated on-by-default value comes from `from_flux`.)*
-- **Multi-bit upsets (MBUs) — an upset EVENT is now a cluster, not a bit.** MICRO'21
-  (doi 10.1145/3466752.3480111; V100 HBM2, ChipIR neutron beam): **31.5% of upset events are
-  multi-bit**, ~75% of those byte-contiguous. `inject.memory.inject_event` models the small-cluster
-  regime (68.5% single-bit; 31.5% multi-bit, contiguous or scattered); the thousands-of-entries tail
-  is a disclosed unmodeled extreme. A pure single-bit model understates correlated corruption and
-  overstates ECC effectiveness — this fixes both.
-- **ECC as SDC→DUE redistribution, not mere suppression.** NSREC'21 (arXiv 2108.00554): with ECC
-  on, SEC-DED corrects single-bit errors but **only the multi-bit share (31.5%) leaks**, and of what
-  leaks the functional-interrupt (DUE) rate exceeds silent-corruption (SDC) by **2.2–2.7× (we take
-  2.3×)** — ECC cuts SDC up to 21× while *raising* DUE up to 13.7×. `--ecc on` now scales the event
-  rate to the MICRO'21 MBU share and splits each leaked event DUE-dominant: ~0.22 of all events
-  become a detected-uncorrectable crash (recovered like a SEFI), ~0.095 a miscorrected silent SDC
-  (injected). This retires the old uncited `DEFAULT_ECC_LEAK_FRACTION = 0.02` placeholder.
-
-> ⚠️ **Conditions caveat (kept as an honesty flag).** MICRO'21 is neutron / HBM2 and NSREC'21 is a
-> specific GPU under its own ECC scheme; this injector is dtype-generic fp32. These are cited anchors
-> *mapped onto* our model, not a device-matched measurement — **beam validation would calibrate the
-> exact MBU share and DUE/SDC split for a given part.** `--ecc on` is not the headline demo (which
-> runs `ecc_off`, the calibratable single-bit proxy); it is the modeled ECC-on regime with its
-> provenance disclosed.
+The dashboard (`demo/dashboard/index.html`) is self-contained local HTML and JS. No server, no CDN.
+Rebuild it from existing logs without retraining: `python demo/dashboard/build.py`.
 
 ---
 
@@ -245,146 +188,68 @@ beam-data audit (`docs/research/beam-calibration-audit.md`) closed three gaps wi
 ```
 orbital_runtime/
 ├── orbit/     track.py  — parametric 95-min LEO orbit; phase-gated SAA window (~10 min/orbit)
-│              flux.py   — time-varying Poisson intensity λ(t): base × bits × SAA × storm
-├── inject/    memory.py — Poisson bit-flips ^= (1<<k); MBU clusters (MICRO'21 31.5%); SDC→DUE under --ecc on
-│              compute.py, sefi.py, xid.py — activation hooks, SEFIs (on, Suncatcher-calibrated), Xid stream
-├── detect/    guards.py — tier 1: isfinite + grad-norm z-score + loss-spike (≈free)
-│              abft.py   — tier 2: sampled checksum verification around nn.Linear GEMMs
-│              watcher.py— tier 3: ECC/Xid consumer (synthetic in sim; real nvidia-smi ECC on L4)
-├── ckpt/      saver.py, policy.py, recover.py — DCP checkpoints; orbit-aware cadence; detect→restore→replay
-├── run.py     — CLI: orbital-run --workload nanogpt --orbits 2 --rate 3e-6 --protect on|off
-└── telemetry.py — JSONL event log (the single source of truth the dashboard reads)
-demo/
-├── workloads/nanogpt/  — char-level Shakespeare nanoGPT (CPU/MPS-sized)
-├── dashboard/          — self-contained HTML/JS dashboard + build.py (JSONL → telemetry_data.js)
-└── run_demo.sh         — the headline demo, end to end
-bench/  overhead.py, detect_eval.py, results/*_l4.json   tests/  (287 pass / 3 skipped on macOS/MPS)
+│              flux.py   — time-varying Poisson intensity: base × bits × SAA × storm
+├── inject/    gpu_model.py — measured GPU outcome distribution (Tung et al. 2026), split by path
+│              memory.py    — stored-state faults: MBU clusters, write-path nullification
+│              compute.py   — activation faults: nullification, warp-aligned tracks, logic tiles
+│              sefi.py, xid.py — SEFIs (Suncatcher-calibrated), Xid stream
+├── detect/    guards.py    — tier 1: isfinite + grad-norm z-score + loss spike (≈free)
+│              integrity.py — tier 2: EXACT checksums over all resident state; locate-and-repair
+│              abft.py      — tier 3: sampled checksums around nn.Linear GEMMs
+│              watcher.py   — tier 4: ECC/Xid consumer (real nvidia-smi ECC on the L4)
+├── ckpt/      saver.py, policy.py, recover.py — DCP checkpoints, 4 slots; orbit-aware cadence
+└── run.py, telemetry.py — CLI and the JSONL event log the dashboard reads
+bench/  coverage_audit.py · fault_model_audit.py · recall_by_class.py · overhead.py
+tests/  316 passing
 ```
 
-**Differentiator — "adaptive vigilance":** detection intensity *and* checkpoint cadence are keyed
-to orbital position (crank ABFT sampling + checkpoint immediately before SAA entry). The narrow,
-defensible novelty claim is **position-aware protection scheduling for general-purpose GPU *training*
-runtimes** — not position-aware safing in general. Radiation-aware *instrument* safing (powering
-down or de-rating a sensor over the SAA) is decades-old spacecraft practice; what is new here is
-applying that idea to unmodified PyTorch training as a runtime, at the granularity of ABFT sampling
-and checkpoint cadence.
+**Two ideas do the work.**
+
+*Adaptive vigilance* — detection intensity and checkpoint cadence keyed to orbital position. About
+90% of upsets arrive in about 10% of the orbit, so a uniform budget wastes most of itself. The
+narrow, defensible novelty is position-aware protection scheduling for general-purpose GPU
+*training* runtimes. Radiation-aware *instrument* safing is decades-old spacecraft practice.
+
+*Locate and repair* — classical algorithm-based fault tolerance applied to stored state rather than
+to a matrix product. The OCP consortium white paper *Silent Data Corruption in AI* (2025, authored
+across NVIDIA, Meta, Google, AMD, Intel, ARM and Microsoft) names ABFT integrated into core AI
+kernels as the promising path to forward error recovery, and asks publicly for standardized SDC
+resilience benchmarks. That is what `bench/fault_model_audit.py` is.
 
 ### Design rules (enforced, not aspirational)
 
-1. **Device-agnostic core** — runs on CPU/MPS; CUDA-only paths (DCGM/Xid, cuda-checkpoint) sit
-   behind interfaces with simulation fallbacks.
-2. **Calibration is sacred** — every physics constant in `flux.py`/`track.py`/`sefi.py`/`memory.py`
-   carries a comment citing its source. (M4c retired the last two placeholders — ECC leak fraction
-   and SEFI per-transit — for cited anchors; a neutron/HBM2 *conditions caveat* remains, flagged below.)
-3. **Determinism** — the flip schedule is drawn before step 0 from named RNG streams (not from
-   float state), so protected and unprotected runs face a **bit-identical bombardment** and the
-   comparison is a controlled experiment; turning ABFT on cannot shift the radiation. Run *outputs*
-   are byte-reproducible on CPU and semantically reproducible on MPS (loss values drift at the ULP);
-   see the determinism note under the laptop demo (review item 5).
-4. **Overhead honesty** — overhead is measured against an A/A control; effects below the noise
-   floor are reported as "below noise", never as a number.
+1. **Device-agnostic core** — runs on CPU/MPS; CUDA-only paths sit behind interfaces with
+   simulation fallbacks.
+2. **Calibration is sacred** — every physics constant carries a comment citing its source.
+3. **Rate and outcome stay separate** — outcome is a property of the silicon and transfers from
+   terrestrial measurement. Rate is a property of the environment and stays orbital. Mixing them is
+   the error that produced 597 zeroed elements per event in a first draft of the fault model.
+4. **Determinism** — the fault schedule is drawn before step 0 from named RNG streams, so protected
+   and unprotected runs face identical bombardment.
+5. **Overhead honesty** — measured against an A/A control. Effects below the noise floor are
+   reported as "below noise", never as a number.
 
 ---
 
-## Running it yourself
+## What is not yet proven
 
-```bash
-make venv install     # .venv + editable install + dev deps
-make test              # full suite: 287 pass / 3 skipped on macOS/MPS, ~40 s (Linux/CUDA differs by platform-adaptive skips)
-make demo              # the three runs, raw (no dashboard)
-demo/run_demo.sh       # the three runs + dashboard (NO_OPEN=1 to skip auto-open)
-
-# sweep the knobs directly:
-.venv/bin/python -m orbital_runtime.run --rate 1e-8 --protect on --orbits 3 --steps 400
-```
-
-Regenerate the dashboard from existing logs without retraining:
-`python demo/dashboard/build.py`.
-
----
-
-## Honesty flags (what is *not* yet proven)
-
-These are tracked in `STATUS.md` and enforced in code; nothing here is quietly shipped.
-
-- **The laptop demo rate (3e-6) is model-size compensation, not physics** — disclosed in the
-  Makefile, `run_demo.sh`, and above. It exists only because the 0.81M laptop model has too few bits
-  to hit at flight rates. **On the L4 this is retired: the calibrated 1e-7 rate kills the unprotected
-  run with no elevation** (see the real-scale section). The 1e-9→1e-7 band is what real H100 bit
-  counts imply, asserted in `tests/test_flux.py`.
-- **ABFT false-positives at real scale — FIXED in M4c.** On the 85.3M model, ABFT's checksum tripped
-  on **3/6 *clean* (unirradiated) runs** (`abft_mismatch`, a *certain* verdict) while it was 0/12 at
-  the 32-dim scale. Root cause: the mismatch tolerance scaled with the post-reduction `|value|`, but
-  a wide MLP `c_proj` reduction (K=3072) **cancels 3–4 orders of magnitude**, so true fp32 rounding
-  noise exceeded the tolerance on some steps. The fix (`detect/abft.py`) keys the tolerance to the
-  **L1 magnitude of the summed terms** — the running-error / variance-aware V-ABFT bound — which is
-  cancellation-invariant, so one safety factor holds at every width. Re-measured on MPS at 768-dim:
-  clean-run FPs **3/6 → 0/6, recall still 1.00** (`bench/results/detect-eval-mps-768.json`). The 32
-  ABFT unit tests pass unchanged, including the sensitivity floor (bit ≥15 caught, bit ≤12 missed);
-  a white-box regression test pins the L1 scale so a refactor back to `|value|` fails loudly.
-- **The two former placeholders are now cited (M4c).** `DEFAULT_ECC_LEAK_FRACTION` is retired in
-  favour of MICRO'21's **31.5% multi-bit share** (SEC-DED leaks exactly the MBU fraction), and the
-  SEFI `p_per_transit` now derives from Suncatcher's **SEFI/SDC cross-section ratio** (~1 per 375
-  events) via `SefiInjector.from_flux`. Both trace to the beam-data audit. **SEFIs and MBU clustering
-  are ON by default; ECC-on redistribution is modeled under `--ecc on`.** The remaining honesty is a
-  **conditions caveat, not a missing citation**: the anchors are neutron/HBM2 (MICRO'21) and a
-  specific GPU/ECC scheme (NSREC'21) mapped onto a dtype-generic fp32 injector — beam validation
-  would calibrate the exact share and split for a given part (see the Radiation-channels section).
-- **The ECC threat-model, now modeled (review item 4, extended in M4c).** The headline still runs
-  `ecc_off`: bare single-bit DRAM upsets, the regime we can calibrate to published per-bit rates. But
-  real deployments fly **ECC-on**, where single-bit flips are *corrected* and what leaks is the
-  residual set — multi-bit-upset leakage (now modeled: MICRO'21 31.5%), SEFIs (now on, Suncatcher-
-  calibrated), and the SDC→DUE redistribution (now modeled: NSREC'21). `ecc_off` remains the
-  **calibratable proxy** that exercises the full detect→rollback→replay machinery against a defensible
-  rate; `--ecc on` is the modeled residual-channel regime with its provenance disclosed. We still do
-  not claim the demo's single-bit DRAM rate is the in-flight ECC-on threat — beam validation is what
-  would pin the ECC-on numbers before any is quoted as measured.
-- **Unprotected death is only *demonstrated* at the band top (1e-7) — review item 9.** At the lower,
-  more representative calibrated rates (1e-8, and especially 1e-9, where modern deep-submicron flight
-  data actually sits) the **unprotected run survives the tested mission length**: too few upsets land
-  in 150–300 steps to guarantee a lethal bit-30 strike. The NEPP 1e-5…1e-7 figures are *design
-  criteria*, not observed modern-memory rates. So the "unprotected dies" headline is a band-top
-  demonstration; the value proposition at 1e-9/1e-8 is the *degradation and tail-risk* protection
-  buys, not certain-death-vs-survival on every mission.
-- **Injection surface and timing are narrow, by construction (review item 10).** Flips land on
-  **parameters and optimizer state only**, and only **between `optimizer.step()` and the next
-  forward** — the instant of maximum ABFT visibility (the trusted checksum is exactly one step old
-  there). Gradients, activations, and mid-kernel/in-flight-GEMM state are **never struck**, and the
-  AWS-paper "silent activation SDC" headline mechanism is therefore *not* what this demo injects.
-  These are the open questions a real **beam campaign** answers; the sim is honest about only covering
-  the memory-resident, between-steps surface.
-- **Oracle scope (review item 12).** The exact corruption-step oracle (rate-0 vs irradiated loss
-  divergence) requires **bit-exact determinism**, which the code relies on but does **not** enforce
-  via `torch.use_deterministic_algorithms(True)` — it holds on CPU and is semantic-only on MPS (item
-  5). The oracle also only sees a fault once it **moves the loss within the ~120-step horizon**, and
-  there is **no oracle after the first rollback** (the replayed trajectory is no longer the clean
-  reference). Recall/latency are measured under those limits, not universally.
-- **fp32-only (review item 14).** Every number here — the bit-30 catastrophe analysis, the ABFT
-  tolerances, the sensitivity floor — is **fp32**. bf16/fp16 differ *materially*: their exponent
-  layout changes which bit is lethal, and their ~1e-2 epsilon makes a fixed checksum threshold
-  hopeless (the variance-aware V-ABFT threshold is the roadmap, not shipped/validated here).
-- **SAA model idealization (review item 16).** The orbit model transits the SAA on an **identical
-  fixed phase every orbit**, which is geographically impossible — a real precessing ground track hits
-  the anomaly on only a *subset* of orbits, at varying depth. `track.py` discloses this; it is
-  repeated here because the idealization **flatters adaptive vigilance** (it makes "checkpoint before
-  every SAA entry" cleaner than reality, where entry timing wanders).
-- **Post-rollback guard warmup blindness (review item 8).** After every rollback the detector is
-  reset, so for the next **~40 steps** the guard z-score and loss-spike checks are in warmup and only
-  `isfinite` is live — a shallow, silent divergence starting in that window is invisible to the
-  *statistical* guards until warmup completes. And because a guard-detected corruption can be up to
-  **77 steps old** (measured), `LAG_UNLOCALISED` is now 80 and such deep rollbacks frequently fall to
-  the best-effort path (counted separately, never reported as proven). This is the quantitative case
-  for ABFT, whose one-step-old trusted checksum gives margin 1 and is unaffected by guard warmup.
-- **No TID / aging term (disclosed gap, out of scope).** This is a *rate-only* upset simulator: it
-  models single-event effects (flips, MBUs, SEFIs) but **not** total-ionizing-dose degradation or
-  displacement damage — Suncatcher saw HBM irregularities from ~2 krad cumulative and MICRO'21 noted
-  displacement-damage weak cells. A cumulative-dose model is out of scope for a rate-level demo; it is
-  named here so the omission is explicit, not hidden.
-- **M4b is done on an NVIDIA L4 24GB** (not A100/H100): real-scale overhead, precision/recall, and
-  calibrated-rate wall-clock are all re-measured above and labelled *NVIDIA L4 24GB*; the MPS/CPU
-  tables below are kept and labelled separately. `DcgmXidSource` (real ECC/Xid polling) is
-  implemented and validated on the L4. **The ABFT-at-scale tolerance fix is done (M4c, above).**
-  **Still open:** the demo video, and a GPU rerun of the frozen L4 bundle under current code.
+- **Compute-path recall is 69.3%, under the 70% floor.** `compute/bitflip` sits at 39.2% because
+  those activation corruptions fall under V-ABFT's 2.2e-5 relative tolerance — the price of zero
+  false positives. Tightening it trades false positives back in. This is the genuine research
+  problem, and it is what a beam campaign and a radiation-effects co-founder would address.
+- **Overhead is 25.7% against a <10% target.** The plan above is measured but unimplemented.
+- **The injector is not beam-validated.** It is calibrated against published beam and flight data
+  (Suncatcher, MICRO'21, NSREC'21) and now against NVIDIA's measured GPU outcome distribution. That
+  is calibration, not validation. Validation is a proton beam campaign at UC Davis Crocker on the
+  same 67 MeV beamline Google used for Suncatcher.
+- **No public radiation SDC rate exists for any modern datacenter GPU.** The newest NVIDIA
+  datacenter part with published beam data is the V100 (2017), and those FIT values are normalized
+  "to not reveal business-sensitive information". The absence is a disclosure choice, not a research
+  gap — which is precisely why running the campaign is worth something.
+- **Tensor-level injection, not SASS-level.** "Demystifying GPU Reliability" found beam and
+  simulation agree within ~5×, but that validation is for instruction-level fault models. It is
+  cited as evidence that fault-injection simulation *in general* tracks beam data, not as a claim
+  that this injector is beam-validated.
 
 ---
 
@@ -392,44 +257,51 @@ These are tracked in `STATUS.md` and enforced in code; nothing here is quietly s
 
 All physics and tooling choices trace to `docs/research/technical-foundations.md`.
 
-**Upset rates & environment.** COTS memory in LEO 1e-3…1e-7 upsets/bit-day; NASA NEPP design
-criteria 1e-5…1e-7; deep-submicron flight data ~1e-9…1e-8 (Flying Laptop, 600 km SSO);
-methodology CREME96. H100 80 GB HBM = 6.4e11 bits → 640–64,000 flips/day. SAA: 80–97% of LEO SEUs
-occur in SAA transits (<20 min/orbit); Proba-II ~90%, a 1025 km satellite 97.3%; modeled as a
-50–100× Poisson multiplier over ~10 min of a ~95-min orbit. Storm mode: Gannon storm, May 2024
-(Wu 2025, *Space Weather*).
+**GPU fault outcomes.** Tung, Huang, Saxena, Shirvani, Hukerikar, Jain, Gongalore (NVIDIA) and
+Tyagi, "The Anatomy of Silent Data Corruption: GPU Error Pattern Study and Modeling Guidance",
+arXiv 2605.04213, DSN 2026 — 600M corruptions across 25,000 SDC cases, 3M+ simulator hours.
+Nullification 50.68%, non-special bit flips 48.31%, NaN/±INF 1.01%; single-bit flips under 40% of
+GPU bit-flip events against 72–98% in CPU studies; warp-aligned periodicity at 2/4/8/16-element
+spacing; control-logic faults corrupting 20–75% of streaming-multiprocessor output.
 
-**Fault injection.** PyTorchFI (UIUC/NVIDIA) tensor-level approach, vendored/extended, not
-hard-depended; NVBitFI (SASS-level) cited as a future validation path; tensor-level injection is
-accepted for error-propagation studies (arXiv 2412.08466). SEFIs: Jetson RADECS 2024 — reboot
-cross-section *exceeds* bit-error cross-section, so crashes matter as much as flips; **Suncatcher**
-(arXiv 2511.19468, 67 MeV p+, Crocker) SEFI σ = 2e-11 vs SDC σ = 6–9e-9 cm²/chip pins the
-per-transit SEFI probability. Multi-bit upsets: **MICRO'21** (doi 10.1145/3466752.3480111; V100
-HBM2, ChipIR) — 31.5% of events multi-bit, ~75% byte-contiguous. ECC as SDC→DUE redistribution:
-**NSREC'21** (arXiv 2108.00554) — ECC-on cuts SDC up to 21× but raises DUE up to 13.7× (DUE:SDC
-2.2–2.7×). Full per-parameter verdict table in `docs/research/beam-calibration-audit.md`.
+**Upset rates and environment.** COTS memory in LEO 1e-3…1e-7 upsets/bit-day; NASA NEPP design
+criteria 1e-5…1e-7; deep-submicron flight data ~1e-9…1e-8 (Flying Laptop, 600 km SSO); CREME96
+methodology. SAA carries 80–97% of LEO SEUs in under 20 min per orbit; modeled as a 50–100× Poisson
+multiplier. Storm mode: Gannon storm, May 2024 (Wu 2025, *Space Weather*).
 
-> ⚠️ **Scope of the "within 5×" agreement (review item 15).** "Demystifying GPU Reliability" (2021)
-> found beam and simulation agree within ~5× — but that validation is for **SASS/instruction-level**
-> fault models (NVBitFI-style), **not** the tensor-level parameter injection this repo uses. It is
-> cited as evidence that *fault-injection simulation in general* tracks beam data, **not** as a claim
-> that this specific tensor-level injector is beam-validated. That validation is the NVBitFI/beam
-> roadmap item, not a property of what ships here.
+**Orbital beam data.** Google Project Suncatcher, arXiv 2511.19468 — the first published radiation
+test of a modern datacenter AI accelerator. UC Davis Crocker Nuclear Laboratory, 67 MeV protons,
+v6e Trillium TPU. SDC at 14.4–20 rad/event (σ 6–9e-9 cm²/chip), SEFI at 1 per 5 krad (σ ~2e-11), no
+TID hard failures to 15 krad(Si). "Core logic and on-chip SRAM were the most SEE-sensitive
+components, primarily manifesting as Silent Data Corruption." Their own open question: "the impact
+of SEEs on training jobs, and the efficacy of system-level mitigations, requires further study."
 
-**Detection.** Real SDCs cause both loss spikes and silent convergence drift (AWS, "SDC in LLM
-training", arXiv 2502.12340). ABFT overhead precedents: FT-CNN 4–8%; V-ABFT ~12% with variance-
-based thresholds for fp16/bf16 (arXiv 2602.08043); ApproxABFT cuts exact-ABFT cost ~43%.
+**Fault injection.** PyTorchFI (UIUC/NVIDIA) tensor-level approach, vendored and extended.
+Multi-bit upsets: MICRO'21 (doi 10.1145/3466752.3480111; V100 HBM2, ChipIR) — 31.5% of memory upset
+events multi-bit, ~75% byte-contiguous. ECC as SDC→DUE redistribution: NSREC'21 (arXiv 2108.00554)
+— ECC-on cuts SDC up to 21× but raises DUE up to 13.7×. ECC does not solve this: neutron beam data
+on NVIDIA GPUs shows "ECC fails at reducing the occurrence of Critical SDCs", with the critical-SDC
+share rising from 8% ECC-off to 61% ECC-on.
 
-**Checkpoint / recovery.** PyTorch Distributed Checkpoint `async_save` (PyTorch ≥2.3);
-CheckFreq ~3.5% overhead precedent (FAST'21); `cuda-checkpoint` + CRIU for transparent GPU
-process snapshot/restore (CRIUgpu, arXiv 2502.16631, stretch).
+**Detection and the field.** Real SDCs cause both loss spikes and silent convergence drift — AWS
+and Harvard, "Understanding Silent Data Corruption in LLM Training", arXiv 2502.12340: "although
+the pretraining loss remains similar, SDCs can cause model parameters to drift away from
+ground-truth weights". Meta: "the corrupted values are exchanged as true values, causing the
+training to appear to progress without actual improvement." Google Gemini 1.0: "we can expect SDC
+events to impact training every week or two." OCP white paper *Silent Data Corruption in AI*
+(August 2025, NVIDIA + Meta + Google + AMD + Intel + ARM + Microsoft) endorses ABFT in core AI
+kernels and calls for standardized resilience benchmarks. ABFT overhead precedents: FT-CNN 4–8%;
+V-ABFT ~12%; ATTNChecker (PPoPP 2025) for attention.
 
-**Positioning.** RedNet (arXiv 2407.11853) — per-layer selective protection for satellite DNN
-*inference*, model-specific; we are a general runtime for unmodified PyTorch. KubeSpace
-(arXiv 2601.21383) schedules containers across satellites — the layer above us. Google Suncatcher
-(arXiv 2511.19468) proves COTS accelerators viable in orbit and explicitly leaves the software
-fault-tolerance layer open — the wedge.
+**Checkpoint and recovery.** PyTorch Distributed Checkpoint `async_save`; CheckFreq ~3.5% overhead
+precedent (FAST'21).
+
+**Positioning.** RedNet (arXiv 2407.11853) protects satellite DNN *inference* per-layer and is
+model-specific; this is a general runtime for unmodified PyTorch training. NVIDIA NVSentinel is
+open-source GPU fault remediation that explicitly does no correctness checking — it quarantines bad
+hardware and never asks whether completed work was right. Suncatcher proves COTS accelerators are
+viable in orbit and leaves the software fault-tolerance layer open.
 
 ---
 
-*Target: YC application demo. See `PLAN.md` for the full plan and `STATUS.md` for the build log.*
+*See `PLAN.md` for the plan and `STATUS.md` for the build log.*

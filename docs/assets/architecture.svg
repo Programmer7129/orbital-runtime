@@ -1,0 +1,173 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 656" role="img" width="1240" height="656">
+  <title>Steadstar runtime architecture</title>
+  <desc>Radiation strikes GPU state during PyTorch training. Three detection tiers observe the run; single-element faults are repaired in place, multi-element faults roll back to a checkpoint.</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0B1020"/>
+      <stop offset="100%" stop-color="#0E1526"/>
+    </linearGradient>
+    <linearGradient id="saaGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F85149" stop-opacity="0.30"/>
+      <stop offset="100%" stop-color="#F85149" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="stateBar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#D29922"/>
+      <stop offset="100%" stop-color="#E3B341"/>
+    </linearGradient>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4A5568"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3FB950"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#F85149"/>
+    </marker>
+  </defs>
+
+  <style>
+    text { font-family: ui-sans-serif, -apple-system, "Segoe UI", Inter, Roboto, sans-serif; }
+    .h1  { fill:#E6EDF3; font-size:23px; font-weight:700; letter-spacing:-0.3px; }
+    .h2  { fill:#E6EDF3; font-size:15px; font-weight:650; }
+    .lbl { fill:#8B949E; font-size:12.5px; font-weight:500; }
+    .sm  { fill:#6E7681; font-size:11px; }
+    .mono{ font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size:11.5px; fill:#8B949E; }
+    .num { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight:700; }
+    .card{ fill:#141B2D; stroke:#232D45; stroke-width:1.2; }
+    @media (prefers-reduced-motion: reduce) { * { animation:none !important; } }
+  </style>
+
+  <rect width="1240" height="656" fill="url(#bg)"/>
+
+  <!-- ══════════ TITLE ══════════ -->
+  <text x="40" y="46" class="h1">Steadstar — radiation fault tolerance for GPUs in orbit</text>
+  <text x="40" y="68" class="lbl">Wraps an unmodified PyTorch job. Detects silent corruption, repairs it in place, rolls back only when it must.</text>
+
+  <!-- ══════════ 1. ENVIRONMENT ══════════ -->
+  <rect x="40" y="92" width="1160" height="104" rx="10" class="card"/>
+  <rect x="40" y="92" width="1160" height="104" rx="10" fill="url(#saaGrad)"/>
+  <text x="60" y="118" class="h2">1 · LEO radiation environment</text>
+  <text x="60" y="138" class="sm">Poisson flux, calibrated to Suncatcher beam data · ~1 SDC per 1,000 chip-hours in orbit</text>
+  <text x="60" y="156" class="sm">South Atlantic Anomaly: 10 min of every 95 min orbit · 75× flux · carries ~90% of all upsets</text>
+
+  <!-- SAA band + sweep -->
+  <rect x="700" y="108" width="480" height="72" rx="7" fill="#F85149" fill-opacity="0.07" stroke="#F85149" stroke-opacity="0.35"/>
+  <text x="716" y="128" class="lbl" style="fill:#F85149">SAA transit</text>
+  <rect x="700" y="108" width="26" height="72" rx="7" fill="#F85149" fill-opacity="0.18">
+    <animate attributeName="x" values="700;1154;700" dur="9s" repeatCount="indefinite"
+             calcMode="spline" keyTimes="0;0.5;1" keySplines="0.4 0 0.6 1;0.4 0 0.6 1"/>
+  </rect>
+
+  <!-- falling particles -->
+  <g>
+    <circle r="2.6" fill="#F85149" filter="url(#soft)">
+      <animateMotion dur="2.6s" repeatCount="indefinite" path="M 250 172 L 250 250"/>
+      <animate attributeName="opacity" values="0;1;1;0" dur="2.6s" repeatCount="indefinite"/>
+    </circle>
+    <circle r="2.6" fill="#F85149" filter="url(#soft)">
+      <animateMotion dur="2.6s" begin="0.9s" repeatCount="indefinite" path="M 470 172 L 470 250"/>
+      <animate attributeName="opacity" values="0;1;1;0" dur="2.6s" begin="0.9s" repeatCount="indefinite"/>
+    </circle>
+    <circle r="2.6" fill="#F85149" filter="url(#soft)">
+      <animateMotion dur="2.6s" begin="1.7s" repeatCount="indefinite" path="M 830 172 L 830 250"/>
+      <animate attributeName="opacity" values="0;1;1;0" dur="2.6s" begin="1.7s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- ══════════ 2. WHAT RADIATION CAN HIT ══════════ -->
+  <rect x="40" y="250" width="560" height="196" rx="10" class="card"/>
+  <text x="60" y="276" class="h2">2 · What a particle can strike</text>
+  <text x="60" y="295" class="sm">Every resident bit is an equally likely target</text>
+
+  <!-- Adam state bar -->
+  <text x="60" y="326" class="lbl">Optimizer state — Adam exp_avg + exp_avg_sq</text>
+  <rect x="60" y="334" width="500" height="26" rx="5" fill="#1B2439" stroke="#2B3550"/>
+  <rect x="60" y="334" width="334" height="26" rx="5" fill="url(#stateBar)" fill-opacity="0.85"/>
+  <text x="70" y="352" class="num" style="fill:#0B1020; font-size:12px">66.7%  — was completely unwatched</text>
+
+  <text x="60" y="386" class="lbl">Model weights</text>
+  <rect x="60" y="394" width="500" height="26" rx="5" fill="#1B2439" stroke="#2B3550"/>
+  <rect x="60" y="394" width="166" height="26" rx="5" fill="#58A6FF" fill-opacity="0.75"/>
+  <text x="70" y="412" class="num" style="fill:#0B1020; font-size:12px">33.3%</text>
+
+  <text x="60" y="436" class="sm">Adam keeps two moment buffers per parameter — the notebook is twice the size of the model.</text>
+
+  <!-- ══════════ 3. TRAINING STEP ══════════ -->
+  <rect x="640" y="250" width="560" height="196" rx="10" class="card"/>
+  <text x="660" y="276" class="h2">3 · The protected training step</text>
+  <text x="660" y="295" class="sm">Order is load-bearing — verify before the optimizer moves anything</text>
+
+  <g>
+    <rect x="660" y="312" width="96" height="42" rx="6" fill="#182238" stroke="#2B3550"/>
+    <text x="708" y="338" class="lbl" text-anchor="middle">forward</text>
+    <line x1="756" y1="333" x2="778" y2="333" stroke="#4A5568" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+    <rect x="782" y="312" width="96" height="42" rx="6" fill="#182238" stroke="#2B3550"/>
+    <text x="830" y="338" class="lbl" text-anchor="middle">backward</text>
+    <line x1="878" y1="333" x2="900" y2="333" stroke="#4A5568" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+    <rect x="904" y="312" width="106" height="42" rx="6" fill="#12233A" stroke="#58A6FF" stroke-opacity="0.55"/>
+    <text x="957" y="333" class="lbl" text-anchor="middle" style="fill:#58A6FF">verify</text>
+    <text x="957" y="347" class="sm" text-anchor="middle" style="fill:#58A6FF; font-size:9.5px">check_now()</text>
+    <line x1="1010" y1="333" x2="1032" y2="333" stroke="#4A5568" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+    <rect x="1036" y="312" width="144" height="42" rx="6" fill="#182238" stroke="#2B3550"/>
+    <text x="1108" y="338" class="lbl" text-anchor="middle">optimizer.step()</text>
+  </g>
+  <path d="M 1108 358 L 1108 378 L 700 378 L 700 358" fill="none" stroke="#3FB950" stroke-opacity="0.5" stroke-width="1.4" stroke-dasharray="4 4" marker-end="url(#arrowGreen)"/>
+  <text x="904" y="396" class="sm" text-anchor="middle" style="fill:#3FB950">refresh() — snapshot the new state as trusted</text>
+  <text x="660" y="428" class="sm">Verifying AFTER the optimizer compares a legitimate update to a stale snapshot:</text>
+  <text x="660" y="442" class="sm" style="fill:#F85149">100% false positive rate. Found and fixed.</text>
+
+  <!-- ══════════ 4. DETECTION TIERS ══════════ -->
+  <text x="40" y="486" class="h2">4 · Three detection tiers, cheapest first</text>
+
+  <!-- guard -->
+  <rect x="40" y="502" width="290" height="118" rx="9" class="card"/>
+  <circle cx="64" cy="526" r="5" fill="#D29922"/>
+  <text x="80" y="531" class="h2" style="font-size:13.5px">Guard</text>
+  <text x="60" y="552" class="sm">Loss / gradient sanity. Free.</text>
+  <text x="60" y="570" class="mono" style="fill:#D29922">catches NaN — 1.01% of faults</text>
+  <text x="60" y="592" class="sm">The loud case. Everyone ships this.</text>
+  <text x="60" y="608" class="sm">It is not where the danger lives.</text>
+
+  <!-- integrity -->
+  <rect x="346" y="502" width="290" height="118" rx="9" fill="#10251A" stroke="#3FB950" stroke-opacity="0.5" stroke-width="1.4"/>
+  <circle cx="370" cy="526" r="5" fill="#3FB950">
+    <animate attributeName="opacity" values="1;0.35;1" dur="2.2s" repeatCount="indefinite"/>
+  </circle>
+  <text x="386" y="531" class="h2" style="font-size:13.5px; fill:#3FB950">Integrity  ◆ new</text>
+  <text x="366" y="552" class="sm">Exact integer checksums over all state.</text>
+  <text x="366" y="570" class="mono" style="fill:#3FB950">100% coverage · zero tolerance</text>
+  <text x="366" y="592" class="sm">No threshold, so nothing hides under one.</text>
+  <text x="366" y="608" class="sm">Locates the exact bit that moved.</text>
+
+  <!-- abft -->
+  <rect x="652" y="502" width="290" height="118" rx="9" class="card"/>
+  <circle cx="676" cy="526" r="5" fill="#58A6FF"/>
+  <text x="692" y="531" class="h2" style="font-size:13.5px">ABFT</text>
+  <text x="672" y="552" class="sm">Checksums around the matrix multiplies.</text>
+  <text x="672" y="570" class="mono" style="fill:#58A6FF">catches corruption mid-computation</text>
+  <text x="672" y="592" class="sm">Sampled, and keyed to orbital position:</text>
+  <text x="672" y="608" class="sm">100% inside the SAA, 10% outside.</text>
+
+  <!-- outcome -->
+  <rect x="958" y="502" width="242" height="118" rx="9" class="card"/>
+  <text x="978" y="531" class="h2" style="font-size:13.5px">Response</text>
+  <circle cx="988" cy="552" r="4" fill="#3FB950"/>
+  <text x="1002" y="556" class="sm" style="fill:#3FB950">repair in place — 39 of 42</text>
+  <circle cx="988" cy="576" r="4" fill="#F85149"/>
+  <text x="1002" y="580" class="sm" style="fill:#F85149">roll back — 3 of 42</text>
+  <text x="978" y="602" class="sm">Rollback is the expensive path.</text>
+  <text x="978" y="616" class="sm" style="fill:#3FB950">Repair costs one subtraction.</text>
+
+  <!-- flow line state -> tiers -->
+  <path d="M 320 446 L 320 470 L 185 470 L 185 500" fill="none" stroke="#4A5568" stroke-width="1.3" marker-end="url(#arrow)"/>
+  <path d="M 320 446 L 320 470 L 491 470 L 491 500" fill="none" stroke="#3FB950" stroke-opacity="0.6" stroke-width="1.6" marker-end="url(#arrowGreen)"/>
+  <path d="M 920 446 L 920 470 L 797 470 L 797 500" fill="none" stroke="#4A5568" stroke-width="1.3" marker-end="url(#arrow)"/>
+</svg>

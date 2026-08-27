@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 660" role="img" width="1240" height="660">
+  <title>Overhead optimization plan</title>
+  <desc>Measured breakdown of the 25.7% protection overhead and the planned fix: replace four full passes over model state with one structured pass using a two-dimensional row and column decomposition.</desc>
+
+  <defs>
+    <linearGradient id="bg3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0B1020"/><stop offset="100%" stop-color="#0E1526"/>
+    </linearGradient>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4A5568"/>
+    </marker>
+  </defs>
+
+  <style>
+    text { font-family: ui-sans-serif, -apple-system, "Segoe UI", Inter, Roboto, sans-serif; }
+    .h1  { fill:#E6EDF3; font-size:22px; font-weight:700; letter-spacing:-0.3px; }
+    .h2  { fill:#E6EDF3; font-size:14px; font-weight:650; }
+    .lbl { fill:#8B949E; font-size:12.5px; }
+    .sm  { fill:#6E7681; font-size:11px; }
+    .mono{ font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size:11.5px; fill:#8B949E; }
+    .card{ fill:#141B2D; stroke:#232D45; stroke-width:1.2; }
+  </style>
+
+  <rect width="1240" height="660" fill="url(#bg3)"/>
+  <text x="40" y="44" class="h1">Why protection costs 25.7%, and the plan to get it under 10%</text>
+  <text x="40" y="66" class="lbl">Measured, not guessed. The cost is not the checksums — it is how many times we walk the data.</text>
+
+  <!-- ════ MEASURED ════ -->
+  <text x="40" y="106" class="h2">Measured today</text>
+
+  <rect x="40" y="120" width="380" height="150" rx="10" class="card"/>
+  <text x="60" y="146" class="lbl">Cost of one checksum, 10M numbers</text>
+  <g>
+    <text x="60" y="176" class="sm">plain sum</text>
+    <rect x="152" y="166" width="60" height="13" rx="3" fill="#58A6FF" fill-opacity="0.75"/>
+    <text x="220" y="177" class="mono">1.9 ms  ·  1.0×</text>
+
+    <text x="60" y="206" class="sm">weighted sum</text>
+    <rect x="152" y="196" width="180" height="13" rx="3" fill="#A371F7" fill-opacity="0.75"/>
+    <text x="340" y="207" class="mono" style="fill:#A371F7">5.6 ms  ·  3.0×</text>
+  </g>
+  <text x="60" y="238" class="sm">The weighted sum builds a position list as big as the data itself —</text>
+  <text x="60" y="254" class="sm" style="fill:#A371F7">80 MB allocated, written, multiplied, and thrown away. Every step.</text>
+
+  <rect x="440" y="120" width="380" height="150" rx="10" class="card"/>
+  <text x="460" y="146" class="lbl">How often we walk the whole model</text>
+  <g>
+    <rect x="460" y="164" width="78" height="26" rx="5" fill="#1B2439" stroke="#2B3550"/>
+    <text x="499" y="181" class="sm" text-anchor="middle">verify ①</text>
+    <rect x="544" y="164" width="78" height="26" rx="5" fill="#1B2439" stroke="#2B3550"/>
+    <text x="583" y="181" class="sm" text-anchor="middle">verify ②</text>
+    <rect x="628" y="164" width="78" height="26" rx="5" fill="#1B2439" stroke="#2B3550"/>
+    <text x="667" y="181" class="sm" text-anchor="middle">refresh ①</text>
+    <rect x="712" y="164" width="78" height="26" rx="5" fill="#1B2439" stroke="#2B3550"/>
+    <text x="751" y="181" class="sm" text-anchor="middle">refresh ②</text>
+  </g>
+  <text x="460" y="214" class="sm" style="fill:#D29922">4 full passes over 1 GB of model state, every single step.</text>
+  <text x="460" y="238" class="sm">Two because we need a before and an after.</text>
+  <text x="460" y="254" class="sm">Two more only because plain and weighted are computed separately.</text>
+
+  <rect x="840" y="120" width="360" height="150" rx="10" class="card"/>
+  <text x="860" y="146" class="lbl">Launch cost of many small tensors</text>
+  <text x="860" y="176" style="font-family:ui-monospace,Menlo,monospace; font-size:26px; fill:#E6EDF3">304</text>
+  <text x="924" y="176" class="sm">separate GPU calls, per pass</text>
+  <text x="860" y="212" style="font-family:ui-monospace,Menlo,monospace; font-size:24px; fill:#D29922">~22 µs</text>
+  <text x="962" y="212" class="sm">of launch overhead, each</text>
+  <text x="860" y="238" class="sm">The GPU spends longer being told what to do</text>
+  <text x="860" y="254" class="sm">than doing it, for the small tensors.</text>
+
+  <!-- ════ THE FIX ════ -->
+  <text x="40" y="312" class="h2">The fix — stop building a position list at all</text>
+  <text x="40" y="332" class="sm">Lay the numbers out as a grid instead of a line. Then position is just row and column, and both sums fall out of the same pass.</text>
+
+  <!-- before -->
+  <rect x="40" y="350" width="470" height="196" rx="10" fill="#2A1F16" stroke="#D29922" stroke-opacity="0.3"/>
+  <text x="62" y="378" class="h2" style="fill:#D29922">Now — a line</text>
+  <g>
+    <rect x="62" y="394" width="426" height="24" rx="4" fill="#1B2439" stroke="#2B3550"/>
+    <text x="275" y="411" class="mono" text-anchor="middle">85,000,000 numbers in a row</text>
+    <rect x="62" y="428" width="426" height="24" rx="4" fill="#A371F7" fill-opacity="0.20" stroke="#A371F7" stroke-opacity="0.4"/>
+    <text x="275" y="445" class="mono" text-anchor="middle" style="fill:#A371F7">85,000,000 position labels — built fresh each time</text>
+  </g>
+  <text x="62" y="478" class="sm">To weight by position you must first write out every position.</text>
+  <text x="62" y="500" class="sm" style="fill:#D29922">80 MB of scratch memory per pass, four times a step.</text>
+  <text x="62" y="524" class="mono" style="fill:#D29922">index memory: 80 MB</text>
+
+  <!-- after -->
+  <rect x="530" y="350" width="670" height="196" rx="10" fill="#0F2A1B" stroke="#3FB950" stroke-opacity="0.45"/>
+  <text x="552" y="378" class="h2" style="fill:#3FB950">Planned — a grid</text>
+
+  <!-- grid visual -->
+  <g>
+    <g stroke="#2B3550" stroke-width="1">
+      <rect x="600" y="392" width="132" height="110" rx="4" fill="#1B2439"/>
+      <line x1="600" y1="414" x2="732" y2="414"/><line x1="600" y1="436" x2="732" y2="436"/>
+      <line x1="600" y1="458" x2="732" y2="458"/><line x1="600" y1="480" x2="732" y2="480"/>
+      <line x1="622" y1="392" x2="622" y2="502"/><line x1="644" y1="392" x2="644" y2="502"/>
+      <line x1="666" y1="392" x2="666" y2="502"/><line x1="688" y1="392" x2="688" y2="502"/>
+      <line x1="710" y1="392" x2="710" y2="502"/>
+    </g>
+    <!-- sweeping row highlight -->
+    <rect x="600" y="392" width="132" height="22" fill="#3FB950" fill-opacity="0.22">
+      <animate attributeName="y" values="392;414;436;458;480;392" dur="4s" repeatCount="indefinite" calcMode="discrete"/>
+    </rect>
+    <!-- row sums -->
+    <rect x="740" y="392" width="16" height="110" rx="3" fill="#3FB950" fill-opacity="0.35"/>
+    <text x="766" y="428" class="sm" style="fill:#3FB950">row sums</text>
+    <text x="766" y="444" class="mono" style="fill:#3FB950">9,200 values</text>
+    <!-- col sums -->
+    <rect x="600" y="510" width="132" height="16" rx="3" fill="#58A6FF" fill-opacity="0.35"/>
+    <text x="666" y="540" class="sm" style="fill:#58A6FF" text-anchor="middle">column sums</text>
+  </g>
+
+  <text x="880" y="410" class="sm">Position = (row, column).</text>
+  <text x="880" y="428" class="sm">Both lists are the square root of the data —</text>
+  <text x="880" y="446" class="sm" style="fill:#3FB950">9,200 labels instead of 85,000,000.</text>
+  <text x="880" y="474" class="sm">And the plain sum is already there:</text>
+  <text x="880" y="492" class="mono" style="fill:#3FB950">plain = sum(row sums) — free</text>
+  <text x="880" y="524" class="mono" style="fill:#3FB950">index memory: 50 KB  (1,581× less)</text>
+
+  <!-- ════ EXPECTED ════ -->
+  <text x="40" y="586" class="h2">Expected result</text>
+  <g>
+    <rect x="40" y="600" width="270" height="40" rx="8" class="card"/>
+    <text x="58" y="618" class="sm">grid decomposition</text>
+    <text x="58" y="634" class="mono" style="fill:#3FB950">measured 1.56× faster</text>
+
+    <rect x="326" y="600" width="270" height="40" rx="8" class="card"/>
+    <text x="344" y="618" class="sm">one pass yields both sums</text>
+    <text x="344" y="634" class="mono" style="fill:#3FB950">4 passes → 2</text>
+
+    <rect x="612" y="600" width="270" height="40" rx="8" class="card"/>
+    <text x="630" y="618" class="sm">batch the small tensors</text>
+    <text x="630" y="634" class="mono" style="fill:#3FB950">304 calls → a handful</text>
+
+    <rect x="898" y="600" width="302" height="40" rx="8" fill="#0F2A1B" stroke="#3FB950" stroke-opacity="0.5"/>
+    <text x="916" y="618" class="sm" style="fill:#3FB950">projected overhead</text>
+    <text x="916" y="634" style="font-family:ui-monospace,Menlo,monospace; font-size:13px; fill:#3FB950; font-weight:700">25.7%  →  8–12%   (target &lt;10%)</text>
+  </g>
+</svg>

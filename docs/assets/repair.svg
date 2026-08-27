@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 600" role="img" width="1240" height="600">
+  <title>Locate and invert: repairing a bit flip without a rollback</title>
+  <desc>Two checksums over the same tensor. The plain sum reveals that something changed; the index-weighted sum divided by it reveals exactly which element. Subtracting the delta restores the tensor bit for bit.</desc>
+
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0B1020"/><stop offset="100%" stop-color="#0E1526"/>
+    </linearGradient>
+    <filter id="glow2" x="-70%" y="-70%" width="240%" height="240%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <style>
+    text { font-family: ui-sans-serif, -apple-system, "Segoe UI", Inter, Roboto, sans-serif; }
+    .h1  { fill:#E6EDF3; font-size:22px; font-weight:700; letter-spacing:-0.3px; }
+    .h2  { fill:#E6EDF3; font-size:14px; font-weight:650; }
+    .lbl { fill:#8B949E; font-size:12.5px; }
+    .sm  { fill:#6E7681; font-size:11px; }
+    .mono{ font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size:13px; fill:#C9D1D9; }
+    .mono-sm{ font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size:11px; fill:#6E7681; }
+    .card{ fill:#141B2D; stroke:#232D45; stroke-width:1.2; }
+    .cell{ fill:#1B2439; stroke:#2B3550; stroke-width:1; }
+  </style>
+
+  <rect width="1240" height="600" fill="url(#bg2)"/>
+  <text x="40" y="44" class="h1">Repair instead of rollback</text>
+  <text x="40" y="66" class="lbl">Two sums locate the exact broken number. Fixing it costs one subtraction — not 50 steps of lost work.</text>
+
+  <!-- ═══ STAGE 1: the tensor ═══ -->
+  <rect x="40" y="94" width="392" height="238" rx="10" class="card"/>
+  <text x="60" y="122" class="h2">1 · A particle strikes one number</text>
+  <text x="60" y="141" class="sm">This is a tensor — a long row of numbers in GPU memory</text>
+
+  <g>
+    <!-- 8x4 grid of cells; cell index 13 is the victim -->
+    <g id="grid">
+      <rect x="62"  y="158" width="40" height="30" rx="4" class="cell"/><rect x="106" y="158" width="40" height="30" rx="4" class="cell"/>
+      <rect x="150" y="158" width="40" height="30" rx="4" class="cell"/><rect x="194" y="158" width="40" height="30" rx="4" class="cell"/>
+      <rect x="238" y="158" width="40" height="30" rx="4" class="cell"/><rect x="282" y="158" width="40" height="30" rx="4" class="cell"/>
+      <rect x="326" y="158" width="40" height="30" rx="4" class="cell"/><rect x="370" y="158" width="40" height="30" rx="4" class="cell"/>
+
+      <rect x="62"  y="192" width="40" height="30" rx="4" class="cell"/><rect x="106" y="192" width="40" height="30" rx="4" class="cell"/>
+      <rect x="150" y="192" width="40" height="30" rx="4" class="cell"/><rect x="194" y="192" width="40" height="30" rx="4" class="cell"/>
+      <rect x="238" y="192" width="40" height="30" rx="4" class="cell"/>
+      <!-- victim: index 13 -->
+      <rect id="victim" x="282" y="192" width="40" height="30" rx="4" fill="#5B1A18" stroke="#F85149" stroke-width="2">
+        <animate attributeName="fill"   values="#1B2439;#1B2439;#5B1A18;#5B1A18;#5B1A18;#12331F;#1B2439"
+                 keyTimes="0;0.18;0.22;0.60;0.74;0.80;1" dur="9s" repeatCount="indefinite"/>
+        <animate attributeName="stroke" values="#2B3550;#2B3550;#F85149;#F85149;#F85149;#3FB950;#2B3550"
+                 keyTimes="0;0.18;0.22;0.60;0.74;0.80;1" dur="9s" repeatCount="indefinite"/>
+        <animate attributeName="stroke-width" values="1;1;2;2;2;2;1"
+                 keyTimes="0;0.18;0.22;0.60;0.74;0.80;1" dur="9s" repeatCount="indefinite"/>
+      </rect>
+      <rect x="326" y="192" width="40" height="30" rx="4" class="cell"/><rect x="370" y="192" width="40" height="30" rx="4" class="cell"/>
+
+      <rect x="62"  y="226" width="40" height="30" rx="4" class="cell"/><rect x="106" y="226" width="40" height="30" rx="4" class="cell"/>
+      <rect x="150" y="226" width="40" height="30" rx="4" class="cell"/><rect x="194" y="226" width="40" height="30" rx="4" class="cell"/>
+      <rect x="238" y="226" width="40" height="30" rx="4" class="cell"/><rect x="282" y="226" width="40" height="30" rx="4" class="cell"/>
+      <rect x="326" y="226" width="40" height="30" rx="4" class="cell"/><rect x="370" y="226" width="40" height="30" rx="4" class="cell"/>
+    </g>
+
+    <!-- index ruler -->
+    <text x="82"  y="278" class="mono-sm" text-anchor="middle">0</text>
+    <text x="302" y="278" class="mono-sm" text-anchor="middle" style="fill:#F85149">13</text>
+    <text x="390" y="278" class="mono-sm" text-anchor="middle">23</text>
+
+    <!-- incoming particle -->
+    <circle r="3.2" fill="#F85149" filter="url(#glow2)" opacity="0">
+      <animateMotion dur="9s" repeatCount="indefinite" keyTimes="0;0.18;0.22;1"
+                     path="M 302 100 L 302 100 L 302 205 L 302 205" calcMode="linear"/>
+      <animate attributeName="opacity" values="0;1;1;0;0" keyTimes="0;0.15;0.21;0.24;1" dur="9s" repeatCount="indefinite"/>
+    </circle>
+
+    <text x="60" y="304" class="sm">One number is now silently wrong. Nothing crashes. Training carries on.</text>
+    <text x="60" y="322" class="sm" style="fill:#F85149">Which of the 85 million is it?</text>
+  </g>
+
+  <!-- ═══ STAGE 2: two sums ═══ -->
+  <rect x="452" y="94" width="360" height="238" rx="10" class="card"/>
+  <text x="472" y="122" class="h2">2 · Two sums, taken before and after</text>
+  <text x="472" y="141" class="sm">Both are cheap — one pass over the data</text>
+
+  <rect x="472" y="158" width="320" height="66" rx="7" fill="#12233A" stroke="#58A6FF" stroke-opacity="0.4"/>
+  <text x="486" y="180" class="sm" style="fill:#58A6FF">plain sum — add every number</text>
+  <text x="486" y="204" class="mono">Δ₁ = sum(after) − sum(before)</text>
+  <text x="486" y="218" class="mono-sm">tells you SOMETHING changed, and by how much</text>
+
+  <rect x="472" y="236" width="320" height="66" rx="7" fill="#1A1533" stroke="#A371F7" stroke-opacity="0.45"/>
+  <text x="486" y="258" class="sm" style="fill:#A371F7">weighted sum — multiply each by its position first</text>
+  <text x="486" y="282" class="mono">Δ₂ = sum(i × after) − sum(i × before)</text>
+  <text x="486" y="296" class="mono-sm">the position rides along inside the number</text>
+
+  <text x="472" y="322" class="sm">Neither sum stores the data. Together they store enough.</text>
+
+  <!-- ═══ STAGE 3: the division ═══ -->
+  <rect x="832" y="94" width="368" height="238" rx="10" class="card"/>
+  <text x="852" y="122" class="h2">3 · Divide, and the index falls out</text>
+  <text x="852" y="141" class="sm">Because Δ₂ is just Δ₁ scaled by the position</text>
+
+  <g>
+    <rect x="852" y="162" width="328" height="76" rx="8" fill="#0F1A2E" stroke="#30363D"/>
+    <text x="1016" y="196" text-anchor="middle" style="font-family:ui-monospace,Menlo,monospace; font-size:19px; fill:#E6EDF3">
+      index = Δ₂ ÷ Δ₁
+    </text>
+    <text x="1016" y="222" text-anchor="middle" class="mono-sm">exact integer division — no search, no scan</text>
+    <rect x="852" y="162" width="328" height="76" rx="8" fill="#3FB950" fill-opacity="0">
+      <animate attributeName="fill-opacity" values="0;0;0.10;0" keyTimes="0;0.60;0.68;0.80" dur="9s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+
+  <g opacity="1">
+    <animate attributeName="opacity" values="0.30;0.30;1;1;0.30" keyTimes="0;0.62;0.70;0.90;1" dur="9s" repeatCount="indefinite"/>
+    <text x="1016" y="266" text-anchor="middle" style="font-family:ui-monospace,Menlo,monospace; font-size:17px; fill:#3FB950">index = 13</text>
+    <text x="1016" y="290" text-anchor="middle" class="mono-sm" style="fill:#3FB950">subtract Δ₁ from element 13 → bit-for-bit restored</text>
+  </g>
+  <text x="852" y="322" class="sm">Works for any single-element fault, any bit, any tensor.</text>
+
+  <!-- ═══ THE PAYOFF ═══ -->
+  <text x="40" y="378" class="h2">What this replaces</text>
+
+  <!-- rollback -->
+  <rect x="40" y="394" width="566" height="168" rx="10" fill="#2A1416" stroke="#F85149" stroke-opacity="0.35"/>
+  <text x="62" y="422" class="h2" style="fill:#F85149">Before — roll back</text>
+  <text x="62" y="444" class="sm">Throw away the model. Reload the last checkpoint. Redo every step since.</text>
+  <g>
+    <rect x="62" y="458" width="60" height="10" rx="3" fill="#3FB950" fill-opacity="0.6"/>
+    <rect x="126" y="458" width="418" height="10" rx="3" fill="#F85149" fill-opacity="0.45"/>
+    <text x="62"  y="486" class="mono-sm">checkpoint</text>
+    <text x="330" y="486" class="mono-sm" text-anchor="middle" style="fill:#F85149">76 steps of work, redone — under continuing radiation</text>
+  </g>
+  <text x="62" y="514" class="sm">Radiation keeps arriving during the replay, so it can strike again…</text>
+  <text x="62" y="532" class="sm" style="fill:#F85149">…and again. Measured: dead at step 33 of 300, out of checkpoints.</text>
+  <text x="62" y="550" class="mono-sm" style="fill:#F85149">DIED (unrecoverable)</text>
+
+  <!-- repair -->
+  <rect x="626" y="394" width="574" height="168" rx="10" fill="#0F2A1B" stroke="#3FB950" stroke-opacity="0.45"/>
+  <text x="648" y="422" class="h2" style="fill:#3FB950">After — repair in place</text>
+  <text x="648" y="444" class="sm">Find the one broken number. Undo it. Keep going.</text>
+  <g>
+    <rect x="648" y="458" width="530" height="10" rx="3" fill="#3FB950" fill-opacity="0.6"/>
+    <rect x="900" y="455" width="5" height="16" rx="2" fill="#E6EDF3">
+      <animate attributeName="opacity" values="1;0.25;1" dur="2s" repeatCount="indefinite"/>
+    </rect>
+    <text x="648" y="486" class="mono-sm">checkpoint</text>
+    <text x="913" y="486" class="mono-sm" style="fill:#3FB950">one subtraction — zero steps lost</text>
+  </g>
+  <text x="648" y="514" class="sm">Measured on an NVIDIA L4 at 85.3M parameters, 49 radiation hits:</text>
+  <text x="648" y="532" class="sm" style="fill:#3FB950">39 of 42 corruptions repaired exactly. 3 needed a rollback.</text>
+  <text x="648" y="550" class="mono-sm" style="fill:#3FB950">COMPLETED 300/300</text>
+</svg>
