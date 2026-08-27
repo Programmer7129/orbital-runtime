@@ -12,6 +12,7 @@ from typing import Any
 # Tier names, in escalating cost order (research doc SS3).
 TIER_GUARD = "guard"  # free: isfinite / z-score / loss-spike
 TIER_ABFT = "abft"  # sampled checksum verification around GEMMs
+TIER_INTEGRITY = "integrity"  # exact checksums over state ABFT cannot see
 TIER_WATCHER = "watcher"  # ECC/Xid event stream (DCGM on real NVIDIA)
 
 # Why a detector fired.
@@ -20,6 +21,9 @@ REASON_NONFINITE_GRAD = "nonfinite_grad"
 REASON_GRAD_NORM_ZSCORE = "grad_norm_zscore"
 REASON_LOSS_SPIKE = "loss_spike"
 REASON_ABFT_MISMATCH = "abft_mismatch"
+# An exact bitwise checksum over resident state disagreed with its snapshot.
+# Proof, not inference: the integer checksum has no tolerance to trip over.
+REASON_INTEGRITY_MISMATCH = "integrity_mismatch"
 REASON_XID_FATAL = "xid_fatal"
 # A single-event functional interrupt (SEFI) or ECC-on double-bit DUE: the
 # process fell over. Not found by a tier -- the crash IS the signal -- but it
@@ -51,6 +55,7 @@ class Verdict:
             REASON_NONFINITE_LOSS,
             REASON_NONFINITE_GRAD,
             REASON_ABFT_MISMATCH,
+            REASON_INTEGRITY_MISMATCH,
             REASON_XID_FATAL,
             REASON_SEFI,
         )

@@ -19,10 +19,12 @@ import torch
 
 from .abft import AbftStats, AbftTier
 from .guards import GuardTier, grads_are_finite
+from .integrity import IntegrityStats, IntegrityTier
 from .verdict import (
     NO_DETECTION,
     REASON_ABFT_MISMATCH,
     REASON_GRAD_NORM_ZSCORE,
+    REASON_INTEGRITY_MISMATCH,
     REASON_LOSS_SPIKE,
     REASON_NONFINITE_GRAD,
     REASON_NONFINITE_LOSS,
@@ -30,6 +32,7 @@ from .verdict import (
     REASON_XID_FATAL,
     TIER_ABFT,
     TIER_GUARD,
+    TIER_INTEGRITY,
     TIER_WATCHER,
     Verdict,
 )
@@ -41,6 +44,8 @@ __all__ = [
     "DcgmXidSource",
     "Detector",
     "GuardTier",
+    "IntegrityStats",
+    "IntegrityTier",
     "SimulatedXidSource",
     "Verdict",
     "WatcherTier",
@@ -48,6 +53,7 @@ __all__ = [
     "NO_DETECTION",
     "REASON_ABFT_MISMATCH",
     "REASON_GRAD_NORM_ZSCORE",
+    "REASON_INTEGRITY_MISMATCH",
     "REASON_LOSS_SPIKE",
     "REASON_NONFINITE_GRAD",
     "REASON_NONFINITE_LOSS",
@@ -55,6 +61,7 @@ __all__ = [
     "REASON_XID_FATAL",
     "TIER_ABFT",
     "TIER_GUARD",
+    "TIER_INTEGRITY",
     "TIER_WATCHER",
     "grads_are_finite",
 ]
@@ -66,6 +73,7 @@ class Detector:
 
     guards: GuardTier | None = None
     abft: AbftTier | None = None
+    integrity: IntegrityTier | None = None
     watcher: WatcherTier | None = None
 
     detections: int = 0
@@ -77,6 +85,8 @@ class Detector:
         if self.abft is not None:
             self.abft.set_position(t_sim=t_sim, in_saa=in_saa)
             self.abft.arm()
+        if self.integrity is not None:
+            self.integrity.set_position(in_saa=in_saa)
 
     def observe(
         self,
@@ -90,7 +100,7 @@ class Detector:
         if self.abft is not None:
             self.abft.disarm()
 
-        for tier in (self.guards, self.watcher, self.abft):
+        for tier in (self.guards, self.watcher, self.integrity, self.abft):
             if tier is None:
                 continue
             verdict = tier.observe(
@@ -107,7 +117,7 @@ class Detector:
         """After a rollback, the baselines describe a state that no longer
         exists -- keeping them would compare replayed steps against a
         corrupted history."""
-        for tier in (self.guards, self.abft, self.watcher):
+        for tier in (self.guards, self.abft, self.integrity, self.watcher):
             if tier is not None:
                 tier.reset()
 
@@ -118,4 +128,6 @@ class Detector:
         }
         if self.abft is not None:
             out.update(self.abft.stats.as_dict())
+        if self.integrity is not None:
+            out.update(self.integrity.stats.as_dict())
         return out
