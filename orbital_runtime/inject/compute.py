@@ -19,12 +19,20 @@ re-slicing the memory rate, so the two are independently sweepable.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
 import torch
 from torch import Tensor, nn
 
+from .gpu_model import (
+    CLASS_NULLIFICATION,
+    CLASS_SPECIAL,
+    PATH_COMPUTE,
+    sample_bit_position,
+    sample_fault_class,
+)
 from .memory import _INT_VIEW_DTYPE, flip_bit
 
 
@@ -39,6 +47,10 @@ class ActivationHit:
     value_before: float
     value_after: float
     shape: tuple[int, ...]
+    # Measured GPU mechanism (gpu_model.CLASS_*) and its geometry.
+    fault_class: str = ""
+    n_elements: int = 1
+    stride: int = 1
 
     def as_record(self) -> dict:
         return {
@@ -49,6 +61,9 @@ class ActivationHit:
             "value_before": self.value_before,
             "value_after": self.value_after,
             "shape": list(self.shape),
+            "fault_class": self.fault_class,
+            "n_elements": self.n_elements,
+            "stride": self.stride,
         }
 
 
@@ -75,6 +90,10 @@ class ComputeInjector:
         self._rng: np.random.Generator | None = None
         self.hits: list[ActivationHit] = []
         self._hooked_names: list[str] = []
+        # Test hook: pin the drawn mechanism instead of sampling it, so a
+        # test about masking or absorption is not also a lottery on the
+        # fault-class distribution. None = sample normally.
+        self.force_fault_class = None
 
     # ------------------------------------------------------------------ #
     # Hook lifecycle
@@ -136,24 +155,69 @@ class ComputeInjector:
             # ALU/registers at that instant, not a uniformly-chosen layer.
             self._armed -= 1
             out = output if output.is_contiguous() else output.contiguous()
-            index = int(self._rng.integers(0, out.numel()))
             width = out.element_size() * 8
-            bit = int(self._rng.integers(0, width))
+            numel = out.numel()
+
+            # THIS is the path Tung et al. characterised: they injected into
+            # control logic, data buffers and compute units, and observed
+            # streaming-multiprocessor OUTPUT. An activation is exactly that --
+            # a value in flight, not a tensor at rest -- so the full measured
+            # distribution applies here, tiles and warp-aligned tracks included.
+            # The stored-state path deliberately uses a different model; see
+            # `gpu_model.sample_fault_class`.
+            fc = self.force_fault_class or sample_fault_class(
+                self._rng, numel=numel, path=PATH_COMPUTE
+            )
+            start = int(self._rng.integers(0, numel))
+            indices = [
+                start + i * fc.stride
+                for i in range(fc.n_elements)
+                if 0 <= start + i * fc.stride < numel
+            ]
+            if not indices:
+                indices = [start]
 
             # Detach: the corruption is a hardware event, not a differentiable
             # op. Autograd must see the corrupted VALUE flow forward, but must
             # not try to backprop through the XOR itself.
             corrupted = out.detach().clone()
-            before, after = flip_bit(corrupted, index, bit)
+            flat = corrupted.reshape(-1)
+            before = float(flat[indices[0]].item())
+
+            if fc.label == CLASS_NULLIFICATION:
+                # Nullification is 50.68% of measured GPU SDCs and was
+                # unreachable by a bit-flip model: zeroing a float is not a
+                # single-bit toggle.
+                with torch.no_grad():
+                    for i in indices:
+                        flat[i] = 0.0
+                bit = -1
+            elif fc.label == CLASS_SPECIAL:
+                with torch.no_grad():
+                    flat[indices[0]] = (
+                        math.inf if self._rng.random() < 0.5 else math.nan
+                    )
+                bit = -1
+            else:
+                bit = sample_bit_position(self._rng, width)
+                for i in indices:
+                    for _ in range(fc.n_bits):
+                        b = sample_bit_position(self._rng, width)
+                        flip_bit(corrupted, i, b)
+
+            after = float(flat[indices[0]].item())
             self.hits.append(
                 ActivationHit(
                     module=name,
-                    index=index,
+                    index=indices[0],
                     bit=bit,
                     dtype=str(out.dtype).replace("torch.", ""),
                     value_before=before,
                     value_after=after,
                     shape=tuple(out.shape),
+                    fault_class=fc.label,
+                    n_elements=len(indices),
+                    stride=fc.stride,
                 )
             )
             # Re-attach to the graph: gradients flow through the delta as a

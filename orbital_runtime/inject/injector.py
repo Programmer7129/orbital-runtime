@@ -127,6 +127,7 @@ class RadiationEnvironment:
         xid: XidSimulator | None = None,
         inject_activations: bool = False,
         activation_share: float = 0.0,
+        legacy_fault_model: bool = False,
     ) -> None:
         self.model = model
         self.optimizer = optimizer
@@ -149,6 +150,7 @@ class RadiationEnvironment:
         self.xid = xid or XidSimulator(ecc_on=False)
 
         self.activation_share = activation_share if inject_activations else 0.0
+        self.legacy_fault_model = legacy_fault_model
 
         # --- draw the entire fault timeline up front (determinism) ---
         # Drawn over the headroom horizon, not the nominal mission, so a
@@ -282,7 +284,14 @@ class RadiationEnvironment:
             self._fire_due(ev, step)  # emits fatal DUE Xid, then raises
             return
 
-        cluster = self.memory.inject_event(self._rng_mem)
+        # GPU-calibrated fault classes by default (Tung et al. 2026). The
+        # legacy MICRO'21 memory-only path stays reachable for A/B comparison
+        # of results produced before the fault model was corrected.
+        cluster = (
+            self.memory.inject_event(self._rng_mem)
+            if self.legacy_fault_model
+            else self.memory.inject_gpu_event(self._rng_mem)
+        )
         if cluster is None:
             return
 

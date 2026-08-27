@@ -88,14 +88,23 @@ def test_relu_masks_corruption_of_negative_activations():
     net, x = Net(), torch.randn(4, 8)
     clean = net(x).clone()
 
-    # seed 1 strikes a negative pre-activation of module `a` (-0.85 -> -0.05):
-    # still negative, so relu() sends both to exactly 0.
+    # Force a single-bit, single-element mantissa flip on a negative
+    # pre-activation. This used to rely on seed 1 happening to draw exactly
+    # that. Once the injector gained the measured GPU fault classes
+    # (nullification, warp-aligned tracks, control-logic tiles), the same seed
+    # could draw a multi-element event, and the test failed for reasons
+    # unrelated to logical masking. Masking is the claim, so the mechanism is
+    # pinned rather than sampled.
+    from orbital_runtime.inject.gpu_model import CLASS_BITFLIP, FaultClass
+
+    single_bit = FaultClass(CLASS_BITFLIP, n_elements=1, stride=1, n_bits=1)
     with ComputeInjector(net) as inj:
         inj.arm(stream(1, STREAM_COMPUTE))
+        inj.force_fault_class = single_bit
         out = net(x)
 
     hit = inj.drain_hits()[0]
-    assert hit.module == "a"
+    assert hit.n_elements == 1
     assert hit.value_before < 0 and hit.value_after < 0
     assert hit.value_before != hit.value_after  # the flip really happened
     assert torch.equal(out, clean)  # ...and was completely absorbed

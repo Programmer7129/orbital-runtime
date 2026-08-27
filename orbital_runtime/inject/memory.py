@@ -57,6 +57,15 @@ import numpy as np
 import torch
 from torch import Tensor
 
+from .gpu_model import (
+    CLASS_BITFLIP,
+    CLASS_NULLIFICATION,
+    CLASS_SPECIAL,
+    PATH_MEMORY,
+    sample_bit_position,
+    sample_fault_class,
+)
+
 # Float dtype -> same-width integer dtype for the bitwise view.
 # torch.view(dtype) requires identical element size, so these must match
 # exactly. fp8 is deliberately absent: torch has no 8-bit integer view that
@@ -159,6 +168,15 @@ class UpsetCluster:
     flips: list[Flip]
     multi_bit: bool
     contiguous: bool
+    # Which measured GPU mechanism produced this event (gpu_model.CLASS_*).
+    # Empty for the legacy MICRO'21 memory-only path.
+    fault_class: str = ""
+    # Distinct ELEMENTS struck. >1 for nullification tiles and warp-aligned
+    # tracks, where `flips` spans several elements rather than several bits of
+    # one word.
+    n_elements: int = 1
+    # Element stride for a warp-aligned event; 1 = contiguous.
+    stride: int = 1
 
     @property
     def size(self) -> int:
@@ -195,6 +213,9 @@ class UpsetCluster:
             "multi_bit": self.multi_bit,
             "contiguous": self.contiguous,
             "bits": self.bit_positions,
+            "fault_class": self.fault_class,
+            "n_elements": self.n_elements,
+            "stride": self.stride,
         }
 
 
@@ -387,6 +408,131 @@ class MemoryInjector:
         if pick is None:
             return None
         return self._flip_at(*pick)
+
+    # ------------------------------------------------------------------ #
+    # GPU-calibrated fault classes (Tung et al. 2026, see inject/gpu_model.py)
+    # ------------------------------------------------------------------ #
+
+    def _element_span(
+        self, numel: int, start: int, n: int, stride: int
+    ) -> list[int]:
+        """Indices for a contiguous or warp-aligned run, clipped to the tensor."""
+        idx = [start + i * stride for i in range(n)]
+        return [i for i in idx if 0 <= i < numel]
+
+    def _write_at(self, target: Target, index: int, value: float) -> Flip:
+        """Overwrite one element outright. Used by nullification and NaN forcing.
+
+        Recorded as a `Flip` with `bit=-1`: this is not a bit toggle, it is a
+        datapath fault that replaced the value. The sentinel keeps one record
+        type across all mechanisms while staying honest about which occurred.
+        """
+        flat = target.tensor.detach().reshape(-1)
+        before = float(flat[index].item())
+        with torch.no_grad():
+            flat[index] = value
+        return Flip(
+            name=target.name,
+            kind=target.kind,
+            index=index,
+            bit=-1,
+            dtype=str(target.tensor.dtype).replace("torch.", ""),
+            value_before=before,
+            value_after=float(value),
+        )
+
+    def inject_gpu_event(self, rng: np.random.Generator) -> UpsetCluster | None:
+        """Strike one event drawn from the MEASURED GPU outcome distribution.
+
+        Replaces the memory-only bit-flip model as the default dispatch path.
+        The old model could not produce nullification at all, which is 50.68% of
+        real GPU SDCs, so its recall numbers described a fault space that does
+        not occur (see docs and `bench/fault_model_audit.py`).
+
+        The event RATE still comes from the orbital flux model. Only the shape
+        of a corruption is taken from NVIDIA's terrestrial characterization,
+        because outcome is a property of the silicon and rate is a property of
+        the environment.
+        """
+        targets = self.targets()
+        if not targets:
+            return None
+        weights = np.array([t.bits for t in targets], dtype=np.float64)
+        total = weights.sum()
+        if total <= 0:
+            return None
+        target = targets[int(rng.choice(len(targets), p=weights / total))]
+        numel = target.tensor.numel()
+        width = target.tensor.element_size() * 8
+
+        fc = sample_fault_class(rng, numel=numel, path=PATH_MEMORY)
+        start = int(rng.integers(0, numel))
+
+        if fc.label == CLASS_NULLIFICATION:
+            indices = self._element_span(numel, start, fc.n_elements, fc.stride)
+            flips = [self._write_at(target, i, 0.0) for i in indices]
+            if not flips:
+                return None
+            return UpsetCluster(
+                flips,
+                multi_bit=False,
+                contiguous=(fc.stride == 1),
+                fault_class=fc.label,
+                n_elements=len(flips),
+                stride=fc.stride,
+            )
+
+        if fc.label == CLASS_SPECIAL:
+            # Force the exponent to all-ones. A uniform bit draw reaches this
+            # far too often; the measured share is 1.01%, so the mechanism is
+            # selected explicitly rather than emerging from bit choice.
+            value = math.inf if rng.random() < 0.5 else math.nan
+            flip = self._write_at(target, start, value)
+            return UpsetCluster(
+                [flip],
+                multi_bit=False,
+                contiguous=True,
+                fault_class=fc.label,
+                n_elements=1,
+                stride=1,
+            )
+
+        # CLASS_BITFLIP: non-special value change, possibly multi-bit and
+        # possibly spanning a warp-aligned track.
+        indices = self._element_span(numel, start, fc.n_elements, fc.stride)
+        if not indices:
+            return None
+        flips: list[Flip] = []
+        for idx in indices:
+            bits = self._draw_bits(rng, width, fc.n_bits)
+            for b in bits:
+                flips.append(self._flip_at(target, idx, b))
+        if not flips:
+            return None
+        return UpsetCluster(
+            flips,
+            multi_bit=(fc.n_bits > 1),
+            contiguous=(fc.stride == 1),
+            fault_class=fc.label,
+            n_elements=len(indices),
+            stride=fc.stride,
+        )
+
+    def _draw_bits(self, rng: np.random.Generator, width: int, n: int) -> list[int]:
+        """Distinct bit positions, weighted LSB-heavy per Tung et al.
+
+        The top exponent bits are deliberately reachable but rare: striking them
+        produces Inf/NaN, and the measured special-value share is only 1.01%.
+        """
+        n = max(1, min(n, width))
+        chosen: list[int] = []
+        for _ in range(n * 4):  # bounded retry for distinctness
+            b = sample_bit_position(rng, width)
+            if b not in chosen:
+                chosen.append(b)
+            if len(chosen) == n:
+                break
+        return chosen or [0]
 
     def inject_event(self, rng: np.random.Generator) -> UpsetCluster | None:
         """Strike one upset EVENT -- a cluster of 1+ bits (MICRO'21 MBU model).
