@@ -38,8 +38,23 @@ import torch
 import torch.distributed.checkpoint as dcp
 from torch.distributed.checkpoint.state_dict_saver import async_save
 
-# Number of checkpoint slots kept live. 2 = double-buffered (research doc SS4).
-DEFAULT_BUFFERS = 2
+# Number of checkpoint slots kept live.
+#
+# Was 2 (double-buffered, research doc SS4): enough so that one bad save cannot
+# lose the run. That reasoning covers save CORRUPTION but not rollback DEPTH,
+# and the two are different requirements.
+#
+# With 2 slots, two consecutive rollbacks consume the entire history and a third
+# has nowhere to go. Measured on an L4 at 85.3M parameters: 4 detections, 3
+# rollbacks, dead "unrecoverable" at step 33 of 300 -- with detection working
+# perfectly. The run did not fail to see the faults, it ran out of places to
+# retreat to.
+#
+# 4 slots tolerate three consecutive rollbacks. Cost is disk, which is the
+# cheapest resource in the system: 4 x model+optimizer state, versus losing the
+# run. Repair (detect/integrity.py) removes most rollbacks in the first place;
+# this is the backstop for the ones it cannot invert.
+DEFAULT_BUFFERS = 4
 
 
 def _device_rng_state(device: torch.device) -> tuple[str, torch.Tensor] | None:

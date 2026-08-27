@@ -215,6 +215,14 @@ def train(
             grad_norm = float(
                 torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
             )
+            # Integrity must verify BEFORE the optimizer moves anything.
+            # optimizer.step() rewrites params AND Adam's moment buffers, so a
+            # check placed after it compares a legitimate update against a
+            # stale snapshot and fires every step. The verdict is held and
+            # surfaced through detector.observe() below, with the other tiers.
+            if detector is not None and detector.integrity is not None:
+                detector.integrity.check_now(step)
+
             optimizer.step()
 
             # One step of work is done. Mission time advances here and never
@@ -262,6 +270,12 @@ def train(
             # trust to already-corrupted weights.
             if detector is not None and detector.abft is not None:
                 detector.abft.refresh_checksums()
+            # Same trusted instant, same reason. The integrity tier snapshots
+            # optimizer state and the params ABFT does not cover; taking that
+            # snapshot any later would fold an already-landed flip into the
+            # baseline and make every subsequent check agree with the fault.
+            if detector is not None and detector.integrity is not None:
+                detector.integrity.refresh()
 
             # Same trusted instant, same reason: a checkpoint taken any later
             # could contain radiation that has already landed.

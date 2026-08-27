@@ -12,7 +12,7 @@ import torch
 from .ckpt.policy import CheckpointPolicy
 from .ckpt.recover import RecoveryOrchestrator
 from .ckpt.saver import CheckpointSaver
-from .detect import Detector, GuardTier
+from .detect import Detector, GuardTier, IntegrityTier
 from .detect.abft import AbftTier
 from .detect.watcher import SimulatedXidSource, WatcherTier
 from .inject.injector import RadiationEnvironment
@@ -80,6 +80,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     d = p.add_argument_group("protection (--protect on)")
     d.add_argument("--no-abft", action="store_true", help="tier 1 only")
+    d.add_argument(
+        "--no-integrity",
+        action="store_true",
+        help="disable exact checksums over optimizer state + uncovered params",
+    )
     d.add_argument("--abft-rate", type=float, default=0.1, help="ABFT sampling outside SAA")
     d.add_argument("--abft-saa-rate", type=float, default=1.0, help="ABFT sampling in SAA")
     d.add_argument("--ckpt-interval", type=int, default=50, help="checkpoint cadence, steps")
@@ -184,7 +189,22 @@ def main(argv: list[str] | None = None) -> int:
         watcher = None
         if env is not None:
             watcher = WatcherTier(source=SimulatedXidSource(env.xid))
-        detector = Detector(guards=GuardTier(), abft=abft, watcher=watcher)
+        # Covers optimizer state and the params ABFT cannot see -- two thirds
+        # of the strikeable surface (bench/coverage_audit.py).
+        integrity = (
+            IntegrityTier(
+                workload.model,
+                optimizer=workload.optimizer,
+                # Scrub cadence derived from the upset rate, not every step.
+                flux=flux,
+                seconds_per_step=(env.seconds_per_step if env is not None else 0.0),
+            )
+            if not args.no_integrity
+            else None
+        )
+        detector = Detector(
+            guards=GuardTier(), abft=abft, integrity=integrity, watcher=watcher
+        )
 
         saver = CheckpointSaver(
             workload.model,
@@ -199,6 +219,13 @@ def main(argv: list[str] | None = None) -> int:
                 base_interval=args.ckpt_interval,
                 saa_interval=args.ckpt_saa_interval,
                 adaptive=not args.no_adaptive,
+                # Derive the cadence from the upset rate when radiation is
+                # modelled, so replay cost is bounded in UPSETS rather than in
+                # steps. A fixed step count starves large models: at 85M params
+                # it left 3 checkpoints in 33 steps and the run died
+                # "unrecoverable" with detection working correctly.
+                flux=flux,
+                seconds_per_step=(env.seconds_per_step if env is not None else 0.0),
             ),
             env=env,
             telemetry=telemetry,

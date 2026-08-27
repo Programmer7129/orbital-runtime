@@ -274,7 +274,10 @@ def test_run_log_tells_the_whole_story(tiny_workload, tmp_path):
     assert len(flips) == env.stats.flips
     for f in flips:
         assert f["value_before"] != f["value_after"]
-        assert 0 <= f["bit"] < 32
+        # bit == -1 is the sentinel for a DATAPATH fault: nullification or a
+        # forced special value overwrote the element rather than toggling a
+        # bit. Those mechanisms did not exist when this was written.
+        assert f["bit"] == -1 or 0 <= f["bit"] < 32
         assert f["target_kind"] in ("param", "optimizer")
         assert isinstance(f["in_saa"], bool)
         assert f["t_sim"] is not None

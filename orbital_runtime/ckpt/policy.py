@@ -39,6 +39,15 @@ DEFAULT_SAA_INTERVAL = 10
 # save lands before the flux rises, and small so it is genuinely "fresh".
 DEFAULT_PRE_SAA_LEAD = 2
 
+# Target expected upsets between checkpoints when a flux model is available.
+# Below 1 means a rollback usually replays less than one upset's worth of work,
+# which is the point: bound the replay cost in UPSETS, not in steps.
+DEFAULT_TARGET_UPSETS_PER_INTERVAL = 0.5
+
+# Floor on the derived cadence. Saving every step would spend more on
+# checkpoint I/O than the step costs to recompute.
+DEFAULT_MIN_INTERVAL = 5
+
 
 @dataclass
 class CheckpointPolicy:
@@ -49,6 +58,12 @@ class CheckpointPolicy:
     saa_interval: int = DEFAULT_SAA_INTERVAL
     pre_saa_lead: int = DEFAULT_PRE_SAA_LEAD
     adaptive: bool = True
+    # Optional FluxModel. When supplied, the cadence is derived from the upset
+    # rate rather than a fixed step count -- see `interval`.
+    flux: object | None = None
+    seconds_per_step: float = 0.0
+    target_upsets_per_interval: float = DEFAULT_TARGET_UPSETS_PER_INTERVAL
+    min_interval: int = DEFAULT_MIN_INTERVAL
 
     _last_save_step: int = field(default=-(10**9), init=False)
     _armed_orbits: set[int] = field(default_factory=set, init=False)
@@ -62,9 +77,46 @@ class CheckpointPolicy:
             raise ValueError("pre_saa_lead must be >= 1")
 
     def interval(self, *, in_saa: bool) -> int:
-        if not self.adaptive:
-            return self.base_interval
-        return self.saa_interval if in_saa else self.base_interval
+        """Steps between saves. Keyed to the UPSET RATE when flux is known.
+
+        A fixed step count is the wrong unit. What a checkpoint insures against
+        is upsets, and the upset rate scales with resident bits -- so the same
+        50-step cadence that is generous on a 10M-parameter model is starvation
+        on an 85M-parameter one, which draws ~8x the flux.
+
+        That is not hypothetical. On an L4 at 85.3M parameters the fixed cadence
+        produced 3 checkpoints in 33 steps, 3 rollbacks exhausted them, and the
+        protected run died "unrecoverable" while detection was working perfectly.
+        The failure was recovery economics, not detection.
+
+        So when a flux model is available, the interval is chosen to keep the
+        EXPECTED UPSETS PER INTERVAL near `target_upsets_per_interval`. A
+        rollback then costs about one upset's worth of replay regardless of
+        model size, which is the invariant that actually matters. Without a flux
+        model the fixed cadence stands, so nothing changes for callers that do
+        not supply one.
+        """
+        fixed = (
+            self.base_interval
+            if not self.adaptive
+            else (self.saa_interval if in_saa else self.base_interval)
+        )
+        if self.flux is None:
+            return fixed
+
+        rate = (
+            self.flux.saa_rate_per_s if in_saa else self.flux.quiescent_rate_per_s
+        )
+        if rate <= 0 or self.seconds_per_step <= 0:
+            return fixed
+        upsets_per_step = rate * self.seconds_per_step
+        if upsets_per_step <= 0:
+            return fixed
+        derived = int(self.target_upsets_per_interval / upsets_per_step)
+        # Clamp: never rarer than the fixed cadence (that is the ceiling the
+        # design already accepted), never so frequent that checkpoint I/O
+        # dominates the step it is protecting.
+        return max(self.min_interval, min(derived, fixed))
 
     def approaching_saa(self, *, t_sim: float, seconds_per_step: float) -> bool:
         """True when SAA entry is within `pre_saa_lead` steps.
