@@ -288,9 +288,13 @@ class ActivationInjector:
     bench.
     """
 
-    def __init__(self, model, modules: list[str]):
+    def __init__(self, model, modules: list[str], dtype: torch.dtype = torch.float32):
         self.model = model
         self.names = modules
+        # The campaign format. Hard-coding fp32 here meant the hook silently
+        # declined to fire on a bf16 model, so a bf16 activation campaign came
+        # back 100% masked, which reads as "bf16 activations are immune".
+        self.dtype = dtype
         self._handles: list = []
         self.fired: dict | None = None
         self._armed: tuple[str, int, int] | None = None  # (module, elem, bit)
@@ -326,7 +330,7 @@ class ActivationInjector:
             want, elem_frac, bit = self._armed
             if name != want or not isinstance(output, torch.Tensor):
                 return output
-            if output.dtype != torch.float32 or output.numel() == 0:
+            if output.dtype != self.dtype or output.numel() == 0:
                 return output
             out = output if output.is_contiguous() else output.contiguous()
             idx = min(int(elem_frac * out.numel()), out.numel() - 1)
@@ -690,7 +694,7 @@ class Campaign:
         """Flip one bit of a value in flight."""
         names = self._activation_modules()
         mod = names[int(rng.integers(0, len(names)))]
-        inj = ActivationInjector(self.model, names)
+        inj = ActivationInjector(self.model, names, self.dtype)
         inj.arm(mod, float(rng.random()), bit)
         defended = arm == ARM_DEFENDED
         exc: BaseException | None = None

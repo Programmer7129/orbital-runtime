@@ -1,0 +1,71 @@
+/opt/pytorch/lib/python3.12/site-packages/torch/cuda/__init__.py:61: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+building + warming workload (300 steps, cuda), mode=inference ...
+  10.72M params, 32.16M resident bf16 elements (0.51e9 bits)
+  warm train loss 2.560996, golden eval loss 2.622368276
+  control (8 uninjected runs): 8/8 masked
+
+sweeping 16 bit positions x 100 trials = 1600  [bf16, arm=paired]
+/opt/pytorch/lib/python3.12/site-packages/torch/cuda/__init__.py:61: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+  bit  0 (mantissa) SDC undef  16.0%  def  16.0%  (repaired   0.0%  caught   0.0%)   [100/1600]
+  bit  1 (mantissa) SDC undef  22.0%  def  22.0%  (repaired   0.0%  caught   0.0%)   [200/1600]
+  bit  2 (mantissa) SDC undef  33.0%  def  33.0%  (repaired   0.0%  caught   0.0%)   [300/1600]
+  bit  3 (mantissa) SDC undef  46.0%  def  46.0%  (repaired   0.0%  caught   0.0%)   [400/1600]
+  bit  4 (mantissa) SDC undef  46.0%  def  46.0%  (repaired   0.0%  caught   0.0%)   [500/1600]
+  bit  5 (mantissa) SDC undef  54.0%  def  54.0%  (repaired   0.0%  caught   0.0%)   [600/1600]
+  bit  6 (mantissa) SDC undef  74.0%  def  74.0%  (repaired   0.0%  caught   0.0%)   [700/1600]
+  bit  7 (exponent) SDC undef  77.0%  def  77.0%  (repaired   0.0%  caught   0.0%)   [800/1600]
+  bit  8 (exponent) SDC undef  82.0%  def  82.0%  (repaired   0.0%  caught   0.0%)   [900/1600]
+  bit  9 (exponent) SDC undef  83.0%  def  83.0%  (repaired   0.0%  caught   0.0%)   [1000/1600]
+  bit 10 (exponent) SDC undef  79.0%  def  79.0%  (repaired   0.0%  caught   0.0%)   [1100/1600]
+  bit 11 (exponent) SDC undef  82.0%  def  82.0%  (repaired   0.0%  caught   0.0%)   [1200/1600]
+  bit 12 (exponent) SDC undef  77.0%  def  77.0%  (repaired   0.0%  caught   0.0%)   [1300/1600]
+  bit 13 (exponent) SDC undef  82.0%  def  82.0%  (repaired   0.0%  caught   0.0%)   [1400/1600]
+  bit 14 (exponent) SDC undef  47.0%  def  47.0%  (repaired   0.0%  caught   0.0%)   [1500/1600]
+  bit 15 (sign    ) SDC undef  83.0%  def  83.0%  (repaired   0.0%  caught   0.0%)   [1600/1600]
+
+============================================================================
+OVERALL  (activation target, inference mode, bits sweep, bf16, cuda)
+============================================================================
+arm               n         masked       detected            SDC   SDC-critical   loss delta
+--------------------------------------------------------------------------------------------
+undefended     1600    571   35.7%     46    2.9%    983   61.4%    131    8.2%     1.73e-06
+defended       1600    571   35.7%     46    2.9%    983   61.4%    131    8.2%     1.73e-06
+
+  SDC        61.4%  ->  61.4%   (983 -> 983 of 1600)
+  SDC-crit   8.2%  ->  8.2%   (131 -> 131)
+  repaired   0.0%   caught 0.0%
+  share of undefended SDC removed by the defended arm: 0.0%
+
+field             n         masked       detected            SDC   SDC-critical   loss delta
+--------------------------------------------------------------------------------------------
+sign            100     17   17.0%      0    0.0%     83   83.0%      7    7.0%     1.79e-06
+exponent        800    145   18.1%     46    5.8%    609   76.1%    101   12.6%     1.91e-06
+mantissa        700    409   58.4%      0    0.0%    291   41.6%     23    3.3%     1.19e-06
+
+bit               n         masked       detected            SDC   SDC-critical   loss delta
+--------------------------------------------------------------------------------------------
+bit 0           100     84   84.0%      0    0.0%     16   16.0%      1    1.0%     3.76e-06
+bit 1           100     78   78.0%      0    0.0%     22   22.0%      3    3.0%     1.73e-06
+bit 2           100     67   67.0%      0    0.0%     33   33.0%      2    2.0%     7.15e-07
+bit 3           100     54   54.0%      0    0.0%     46   46.0%      2    2.0%     1.07e-06
+bit 4           100     54   54.0%      0    0.0%     46   46.0%      5    5.0%     1.37e-06
+bit 5           100     46   46.0%      0    0.0%     54   54.0%      3    3.0%     1.13e-06
+bit 6           100     26   26.0%      0    0.0%     74   74.0%      7    7.0%     2.03e-06
+bit 7           100     23   23.0%      0    0.0%     77   77.0%      9    9.0%     1.31e-06
+bit 8           100     18   18.0%      0    0.0%     82   82.0%     12   12.0%     2.50e-06
+bit 9           100     17   17.0%      0    0.0%     83   83.0%      7    7.0%     2.09e-06
+bit 10          100     21   21.0%      0    0.0%     79   79.0%      9    9.0%     1.07e-06
+bit 11          100     18   18.0%      0    0.0%     82   82.0%     13   13.0%     1.61e-06
+bit 12          100     23   23.0%      0    0.0%     77   77.0%      5    5.0%     9.54e-07
+bit 13          100     18   18.0%      0    0.0%     82   82.0%     16   16.0%     1.85e-06
+bit 14          100      7    7.0%     46   46.0%     47   47.0%     30   30.0%     1.77e-04
+bit 15          100     17   17.0%      0    0.0%     83   83.0%      7    7.0%     1.79e-06
+
+SDC magnitude (983 silent failures)
+  eval-loss delta   median 1.729e-06   max 1.330e+16
+  tokens changed    median 1 of 4096   max 3 of 4096  (0.1%)
+
+3200 trials in 205.3s
+wrote bench/results/sdc-l4/l4-bf16-activation-bits-paired.json

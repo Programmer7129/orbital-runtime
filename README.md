@@ -91,9 +91,12 @@ Each trial flips exactly one bit in a warm workload and lands in one bucket.
 software injector the analogue is a failure loud enough that a free screen catches it,
 which is what `detect/guards.py` is.
 
-Comparison is bitwise with no tolerance. That is valid only if an uninjected run
-reproduces exactly, so every campaign first runs 8 uninjected control trials and aborts
-unless all 8 return `masked`. All campaigns below passed, on CPU and on CUDA.
+Comparison is bitwise with no tolerance, and it needs no noise band, because **run-to-run
+noise on a fixed seed is zero, not small.** Every campaign runs 8 uninjected control
+trials before it starts and aborts unless all 8 come back bit-identical. All of them did,
+on CPU and on CUDA. There is no threshold to argue about and no variance for a fault to
+hide inside: an uninjected run of this workload reproduces exactly, so any difference at
+all is the injected bit and nothing else.
 
 ### Method
 
@@ -122,22 +125,45 @@ gain is not as likely a target as a 25M-element embedding.
 Across all 10,400 undefended L4 trials, **not one raised an exception**. Every detection
 was a non-finite value, which is the single failure a NaN screen catches for free.
 
-### bf16 is the result that matters commercially
+### Which format each table models
 
-bf16 keeps all 8 exponent bits of fp32 and pays for them out of the mantissa. Half a bf16
-word is exponent or sign against a quarter of an fp32 word, and there are only 7 low bits
-left to absorb a flip harmlessly. The same experiment, same L4, same seed, same model,
-differing only in the stored format:
+Mixed-precision training does not put everything in one format, so the fp32 and bf16
+tables are complementary rather than competing. Read them this way:
 
-| L4-measured | masked | SDC | SDC changing a token |
-|---|---|---|---|
-| fp32 weights | 46.6% | 51.7% | 2.9% |
-| bf16 weights | 5.7% | 90.7% | 53.6% |
+| Table | Models |
+|---|---|
+| fp32 weights, fp32 optimizer state | The master weights and Adam moments, which the optimizer keeps in fp32. This is the real mixed-precision regime for stored state. |
+| bf16 activations | Everything in flight: activations, the compute path, and the GEMM outputs. This is the real mixed-precision regime for values in motion. |
+| bf16 weights | Weights stored narrow, which is how models are commonly served for inference. It is NOT what mixed-precision training does to master weights. |
 
-Moving the weights from fp32 to bf16 cuts the harmless fraction by 8x and raises the
-share of flips that change the model's answer by 18x. In fp32, mantissa bit 0 is masked
-93 times in 100 and changes no token. In bf16, mantissa bit 0 is masked 32 times in 100
-and changes a token 14 times in 100.
+Bit indices are 0-31 for fp32 and 0-15 for bf16 and fp16. No table below mixes them.
+
+### Narrow formats absorb far less
+
+bf16 keeps all 8 exponent bits of fp32 and pays for them out of the mantissa, so there are
+7 low bits left to absorb a flip harmlessly instead of 23. fp16 spends the other way: 5
+exponent bits and 10 mantissa bits.
+
+Weights, L4-measured, same seed and same model, differing only in stored format. The bf16
+row is the serving case, not the training case.
+
+| L4-measured, weights | bits | n | masked | SDC | changed a token |
+|---|---|---:|---|---|---|
+| fp32 | 0-31 | 3200 | 46.6% | 51.7% | 2.9% |
+| bf16 | 0-15 | 1600 | 5.7% | 90.7% | 53.6% |
+
+Activations in flight, L4-measured. This is the row that describes the mixed-precision
+compute path.
+
+| L4-measured, activations | bits | n | masked | detected | SDC | changed a token |
+|---|---|---:|---|---|---|---|
+| fp32 | 0-31 | 1600 | 76.6% | 1.9% | 21.5% | 1.8% |
+| bf16 | 0-15 | 1600 | 35.7% | 2.9% | 61.4% | 8.2% |
+| fp16 | 0-15 | 1600 | 45.0% | 1.2% | 53.8% | 3.8% |
+
+Moving the compute path from fp32 to bf16 cuts the harmless fraction by more than half and
+raises token-changing corruption 4.6x. fp16 sits between the two, which is what its wider
+mantissa predicts.
 
 ### Bit position decides the outcome
 
@@ -197,9 +223,11 @@ stricter test afterward. All three columns are L4-measured, from the same trials
 | fp32 measured GPU prior | 2000 | 33.9% | 0.8% | 0.4% |
 
 The seed-to-seed spread comes from training 5 extra models at different seeds on the same
-L4: pairwise validation-loss spread of 9.8e-04 to 5.0e-02, median 2.7e-02.
+L4: pairwise validation-loss spread of 9.8e-04 to 5.0e-02, median 2.7e-02. It is context
+for the scale a loss delta lives on. It is not run-to-run noise, which is zero (see
+Method).
 
-**That floor is reported as scale, and is deliberately not used as the corruption
+**That spread is reported as scale, and is deliberately not used as the corruption
 threshold.** Two reasons, both visible in the numbers above. Those same 5 models disagree
 with each other on a median of 3373 of 4096 predicted tokens, so seed-to-seed token
 agreement is not a floor at all, it is noise larger than any single-bit fault. And in
@@ -219,25 +247,63 @@ every Linear. That measures what the detectors can see. It is not the shipping
 configuration, whose sample rates are lower and whose overhead is the 25.7% in the gate
 scoreboard above. This campaign does not measure overhead and makes no overhead claim.
 
-| L4-measured, paired | n | SDC undefended | SDC defended | outcome in the defended arm |
+| L4-measured, paired | n | SDC undefended | SDC defended | share of SDC removed |
 |---|---:|---|---|---|
-| fp32 weights | 3200 | 51.7% | 0.0% [0.0, 0.1] | 100% repaired in place |
-| bf16 weights | 1600 | 90.7% | 0.0% [0.0, 0.2] | 100% repaired in place |
-| fp32 activations | 1600 | 21.5% | 0.8% [0.4, 1.4] | 36.9% caught, 96.2% of SDC removed |
+| fp32 weights | 3200 | 51.7% | 0.0% [0.0, 0.1] | 100% (all repaired in place) |
+| bf16 weights | 1600 | 90.7% | 0.0% [0.0, 0.2] | 100% (all repaired in place) |
+| fp32 activations | 1600 | 21.5% | 0.8% [0.4, 1.4] | 96.2% |
+| fp16 activations | 1600 | 53.8% | 49.5% | **8.0%** |
+| bf16 activations | 1600 | 61.4% | 61.4% | **0.0%** |
 
-The stored-state result is the easy case and should be read as such. An exact integer
-checksum with locate-and-repair cannot miss a single-bit flip in a single element, so
-100% is the arithmetic working, not a surprise. The honest number is the activation row:
-ABFT removed 96.2% of the silent corruption and 13 trials in 1600 still got through
-undetected and wrong.
+The stored-state rows are the easy case and should be read as such. An exact integer
+checksum with locate-and-repair cannot miss a single-bit flip in a single element, so 100%
+is the arithmetic working rather than evidence about hard faults.
 
-Two caveats on the defended arm. ABFT fired on 36.9% of activation trials while only
-21.5% were SDCs, so it also caught faults that would have been masked anyway. Those are
-real faults with no consequence, not false positives, but they are not value delivered
-either. And `--target gradient` has no defended arm at all: the integrity tier must run
-before `optimizer.step()`, but a gradient fault only reaches the state through that step.
-The campaign refuses that combination rather than report a number that would measure a
-known false-positive path.
+**The activation rows are the finding, and the bf16 row is a failure.** ABFT removed 96.2%
+of silent corruption in fp32, 8.0% in fp16, and nothing at all in bf16. That ordering is
+not noise and it is not a wiring problem. It follows directly from the tier's own
+tolerance.
+
+`detect/abft.py` sets its rounding-noise bound to `safety * eps * sqrt(K) * scale`, keyed
+to the L1 magnitude of the summed terms. Evaluated at the widths this model uses, the
+tolerance as a multiple of a row's L1 magnitude is:
+
+| dtype | eps | tolerance at K=384 | tolerance at K=1536 |
+|---|---|---|---|
+| fp32 | 1.2e-07 | 3.7e-05 x row L1 | 7.5e-05 x row L1 |
+| fp16 | 9.8e-04 | 0.31 x row L1 | 0.61 x row L1 |
+| bf16 | 7.8e-03 | **2.45 x row L1** | **4.90 x row L1** |
+
+In bf16 the detector's own noise bound is larger than the entire row it is checking, so
+no discrepancy can ever exceed it. The failure compounds because the scale is keyed to the
+observed output, which already contains the fault: a corrupted value inflates the L1
+magnitude, which inflates the tolerance, which hides the corruption that inflated it.
+
+Verified directly and separately from the campaign. Injecting into the top exponent bit of
+an activation, the most damaging single-bit corruption available, ABFT fired on 23 of 25
+trials in fp32, 23 of 25 in fp16, and **0 of 25 in bf16**. A value multiplied by roughly
+2^128 is invisible to the checksum in bf16.
+
+This contradicts a claim in the module's own docstring, which states that the L1
+running-error scaling "is what makes the tier usable in bf16". The measurement says it
+does not. The L1 scaling did fix the fp32 false positives it was introduced for. It did
+not make bf16 workable, and bf16 is the format the compute path actually runs in.
+
+Two further caveats on the defended arm, both unflattering and both left unadjusted.
+ABFT fired on 36.9% of fp32 activation trials while only 21.5% were SDCs, so it also
+caught faults that would have been masked anyway. Those are real faults with no
+consequence, not false positives, but they are not value delivered either. And
+`--target gradient` has no defended arm at all: the integrity tier must run before
+`optimizer.step()`, but a gradient fault only reaches the state through that step. The
+campaign refuses that combination rather than report a number from a known
+false-positive path.
+
+Both tiers ran at their ceiling here: the integrity tier scanned every step and ABFT
+sampled every Linear. The shipping configuration samples less and costs the 25.7% in the
+gate scoreboard above. Nothing here measures overhead. Two limits already published in
+this README apply to these rows and are not repaired by this campaign: compute-path recall
+of 69.3% sits below the repo's own 70% gate, and ABFT false positives at 768 dimensions
+are disclosed and unfixed.
 
 ### CPU against L4, same seed
 
@@ -280,6 +346,10 @@ and much of the on-chip logic carry no ECC at all.
 5. One model at 10.72M parameters, one seed, one workload. Not a frontier model.
 6. The defended arm measures detection at the ceiling, not the shipping sample rates, and
    says nothing about overhead.
+7. ABFT does not work in bf16 at these reduction widths, and bf16 is the compute path.
+   The integrity tier is unaffected, because it checksums stored state as integers rather
+   than reconstructing a float reduction. Until the ABFT tolerance is reworked, the
+   compute path has no working detector in the format it actually runs in.
 
 ### Reproduce
 
@@ -297,9 +367,13 @@ python -m bench.sdc_campaign --arm paired --sweep bits --trials 100 --target wei
 python -m bench.sdc_campaign --arm paired --sweep bits --trials 100 --target weight \
   --dtype bfloat16 --device cuda $M --json bench/results/sdc-l4/l4-bf16-weight-bits-paired.json
 
-# activations in flight
+# activations in flight, one run per format. bf16 is the mixed-precision compute path.
 python -m bench.sdc_campaign --arm paired --sweep bits --trials 50 --target activation \
   --dtype float32 --device cuda $M --json bench/results/sdc-l4/l4-fp32-activation-bits-paired.json
+python -m bench.sdc_campaign --arm paired --sweep bits --trials 100 --target activation \
+  --dtype bfloat16 --device cuda $M --json bench/results/sdc-l4/l4-bf16-activation-bits-paired.json
+python -m bench.sdc_campaign --arm paired --sweep bits --trials 100 --target activation \
+  --dtype float16 --device cuda $M --json bench/results/sdc-l4/l4-fp16-activation-bits-paired.json
 
 # blended rate under each bit prior
 python -m bench.sdc_campaign --sweep uniform --trials 2000 --bit-model uniform --target weight \
