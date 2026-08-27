@@ -59,9 +59,20 @@ small ones.
 So the tolerance is **scaled to the arithmetic**, which is the "variance-
 aware threshold" idea: rounding error in a K-term reduction accumulates as a
 random walk, growing like eps*sqrt(K), and scales with the magnitude of the
-terms being summed. `_tolerance()` below builds exactly that bound. This is
-what makes the tier usable in bf16, whose eps is ~1e-2 -- 4000x looser than
-fp32's -- where a fixed threshold is hopeless.
+terms being summed. `_tolerance()` below builds exactly that bound.
+
+MEASURED LIMIT: this tier does NOT work in bf16. An earlier version of this
+docstring claimed the scaling "is what makes the tier usable in bf16". That
+claim is false and was never measured. bf16's eps is ~7.8e-3, so
+`safety * eps * sqrt(K)` evaluates to 2.45 at K=384 and 4.90 at K=1536: the
+tolerance comes out LARGER THAN THE ENTIRE ROW it is checking, and no
+discrepancy of any size can exceed it. Measured on an L4 over 1600 injected
+activation faults, the tier removed 96.2% of silent corruption in fp32,
+8.0% in fp16 and 0.0% in bf16. Injecting the top exponent bit, the most
+damaging single-bit corruption available, it fired on 23/25 trials in fp32
+and 0/25 in bf16. bf16 is the format the compute path actually runs in, so
+this is a real gap and not a corner case. See the outcome-campaign section
+of README.md.
 
 Running-error scale: bound by the TERMS, not the RESULT (V-ABFT, M4c)
 --------------------------------------------------------------------
@@ -76,10 +87,16 @@ steps. This is exactly the 768-dim false-positive M4b measured: a wide MLP
 `|result|`-scaled tolerance tripped on 3/6 clean runs while the L1-scaled
 one sits ~1000x below threshold. `_verify` therefore keys the tolerance to
 `max(L1(lhs), L1(rhs))` -- the running-error bound -- which is cancellation-
-invariant, so a single safety factor holds at every reduction width. Recall
-is unaffected: a real fault's discrepancy dwarfs rounding noise either way
-(a bit>=15 strike still lands far above the L1 bound; see detect_eval and
-tests/test_abft.py's sensitivity-floor cases).
+invariant, so a single safety factor holds at every reduction width.
+
+The L1 scaling did fix the fp32 false positives it was introduced for, and
+that part still holds. The claim that "recall is unaffected" does not. It
+holds in fp32, where the resulting bound is 3.7e-05 of a row's L1 magnitude
+and a real fault clears it easily. It fails in bf16, where the same formula
+yields a bound above 1.0 of the row's L1 magnitude. The failure compounds
+because `scale` is keyed to the OBSERVED output, which already contains the
+fault: a corrupted value inflates the L1 magnitude, which inflates the
+tolerance, which hides the corruption that inflated it.
 
 What it catches that tier 1 cannot
 ----------------------------------
